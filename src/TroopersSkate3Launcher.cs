@@ -206,6 +206,8 @@ namespace Skate3Launcher
         public static readonly Color Warn = Color.FromArgb(251, 191, 36);
 
         public static readonly string IconFace = FontExists("Segoe Fluent Icons") ? "Segoe Fluent Icons" : "Segoe MDL2 Assets";
+        // False on systems without the Windows icon fonts (e.g. Wine/Mono): icons are then left out instead of drawing empty boxes.
+        public static readonly bool HasIcons = FontExists("Segoe Fluent Icons") || FontExists("Segoe MDL2 Assets");
 
         public static readonly Font Base = new Font("Segoe UI", 9.75f);
         public static readonly Font Bold = new Font("Segoe UI Semibold", 10.25f);
@@ -223,7 +225,7 @@ namespace Skate3Launcher
 
         static bool FontExists(string name)
         {
-            try { using (var f = new Font(name, 10f)) return f.Name == name; }
+            try { return FontFamily.Families.Any(ff => ff.Name.Equals(name, StringComparison.OrdinalIgnoreCase)); }
             catch { return false; }
         }
     }
@@ -333,6 +335,28 @@ namespace Skate3Launcher
     }
 
     // ====================================================================== controls
+
+    // Label that word-wraps to MaximumSize.Width. Windows does this natively; Mono's Label doesn't, so it is measured and drawn by hand there.
+    class TextLabel : Label
+    {
+        static readonly bool OnMono = Type.GetType("Mono.Runtime") != null;
+        const TextFormatFlags Wrap = TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix | TextFormatFlags.TextBoxControl;
+
+        public override Size GetPreferredSize(Size proposed)
+        {
+            if (!OnMono || MaximumSize.Width <= 0) return base.GetPreferredSize(proposed);
+            if (Text.Length == 0) return new Size(0, 0);
+            var sz = TextRenderer.MeasureText(Text, Font, new Size(MaximumSize.Width, int.MaxValue), Wrap);
+            return new Size(Math.Min(sz.Width + 2, MaximumSize.Width), sz.Height);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            if (!OnMono) { base.OnPaint(e); return; }
+            e.Graphics.Clear(Parent != null ? Parent.BackColor : BackColor);
+            TextRenderer.DrawText(e.Graphics, Text, Font, ClientRectangle, ForeColor, Wrap);
+        }
+    }
 
     // Base for owner-painted controls: double buffered, repaints on resize.
     class PaintedControl : Control
@@ -614,7 +638,7 @@ namespace Skate3Launcher
             string text = SelectedIndex >= 0 ? Items[SelectedIndex].ToString() : "";
             TextRenderer.DrawText(g, text, Font, new Rectangle(Dpi.S(12), 0, Width - Dpi.S(12) - chevronW, Height), Theme.Text,
                 TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
-            TextRenderer.DrawText(g, "", Theme.IconXs, new Rectangle(Width - chevronW, 0, chevronW - Dpi.S(6), Height),
+            TextRenderer.DrawText(g, Theme.HasIcons ? "" : "\u25BE", Theme.HasIcons ? Theme.IconXs : Theme.Base, new Rectangle(Width - chevronW, 0, chevronW - Dpi.S(6), Height),
                 hover || DroppedDown ? Theme.Text : Theme.Muted, TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPrefix);
         }
 
@@ -680,6 +704,22 @@ namespace Skate3Launcher
         public Font GlyphFont = Theme.IconSm;
         public bool LeftAlign;
 
+        // Short text shown instead of an icon-only button's glyph when the Windows icon fonts aren't installed.
+        static readonly Dictionary<string, string> Fallback = new Dictionary<string, string>
+        {
+            { "\uE7A7", "\u21BA" }, { "\uE74E", "Update" }, { "\uE71B", "Shortcut" }, { "\uE74D", "Delete" },
+            { "\uE8B7", "Folder" }, { "\uE9F9", "Logs" }, { "\uE70F", "Edit" }, { "\uE777", "Restore" }
+        };
+
+        public static string FallbackText(string glyph)
+        {
+            string t;
+            return glyph != null && Fallback.TryGetValue(glyph, out t) ? t : "";
+        }
+
+        // What actually gets drawn as the label.
+        string Label { get { return string.IsNullOrEmpty(Text) && !Theme.HasIcons ? FallbackText(Glyph) : Text; } }
+
         public PillButton(string text, string glyph, ButtonStyle style)
         {
             Text = text;
@@ -742,14 +782,16 @@ namespace Skate3Launcher
             if (Focused && ShowFocusCues)
                 Gfx.DrawRound(g, Theme.Text, new RectangleF(1.5f, 1.5f, Width - 3f, Height - 3f), rad - 1, 1f);
 
-            Size ts = string.IsNullOrEmpty(Text) ? Size.Empty : TextRenderer.MeasureText(g, Text, Font, Size.Empty, Gfx.Flat);
-            Size gs = string.IsNullOrEmpty(Glyph) ? Size.Empty : TextRenderer.MeasureText(g, Glyph, GlyphFont, Size.Empty, Gfx.Flat);
+            string label = Label;
+            Font font = string.IsNullOrEmpty(Text) && label.Length > 1 ? Theme.Small : Font;
+            Size ts = string.IsNullOrEmpty(label) ? Size.Empty : TextRenderer.MeasureText(g, label, font, Size.Empty, Gfx.Flat);
+            Size gs = string.IsNullOrEmpty(Glyph) || !Theme.HasIcons ? Size.Empty : TextRenderer.MeasureText(g, Glyph, GlyphFont, Size.Empty, Gfx.Flat);
             int gap = gs.Width > 0 && ts.Width > 0 ? Dpi.S(Style == ButtonStyle.Primary ? 10 : 8) : 0;
             int x = LeftAlign ? Dpi.S(12) : (Width - (gs.Width + gap + ts.Width)) / 2;
             if (gs.Width > 0)
                 TextRenderer.DrawText(g, Glyph, GlyphFont, new Point(x, (Height - gs.Height) / 2), Style == ButtonStyle.Ghost && !hover ? Theme.Subtle : fg, Gfx.Flat);
             if (ts.Width > 0)
-                TextRenderer.DrawText(g, Text, Font, new Point(x + gs.Width + gap, (Height - ts.Height) / 2), fg, Gfx.Flat);
+                TextRenderer.DrawText(g, label, font, new Point(x + gs.Width + gap, (Height - ts.Height) / 2), fg, Gfx.Flat);
         }
     }
 
@@ -785,9 +827,14 @@ namespace Skate3Launcher
                 Gfx.FillRound(g, Theme.Accent, new RectangleF(0, Height / 2f - Dpi.Sf(9), Dpi.Sf(3), Dpi.Sf(18)), Dpi.Sf(1.5f));
 
             Color fg = selected || hover ? Theme.Text : Theme.Muted;
-            Size gs = TextRenderer.MeasureText(g, Glyph, Theme.IconMd, Size.Empty, Gfx.Flat);
-            TextRenderer.DrawText(g, Glyph, Theme.IconMd, new Point(Dpi.S(16), (Height - gs.Height) / 2), selected ? Theme.Accent : fg, Gfx.Flat);
-            TextRenderer.DrawText(g, Text, Font, new Rectangle(Dpi.S(46), 0, Width - Dpi.S(50), Height), fg,
+            int textX = Dpi.S(46);
+            if (Theme.HasIcons)
+            {
+                Size gs = TextRenderer.MeasureText(g, Glyph, Theme.IconMd, Size.Empty, Gfx.Flat);
+                TextRenderer.DrawText(g, Glyph, Theme.IconMd, new Point(Dpi.S(16), (Height - gs.Height) / 2), selected ? Theme.Accent : fg, Gfx.Flat);
+            }
+            else textX = Dpi.S(18);
+            TextRenderer.DrawText(g, Text, Font, new Rectangle(textX, 0, Width - textX - Dpi.S(4), Height), fg,
                 TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
         }
     }
@@ -1210,7 +1257,7 @@ namespace Skate3Launcher
             side.Paint += (o, e) => { using (var p = new Pen(Theme.CardBorder)) e.Graphics.DrawLine(p, side.Width - 1, 0, side.Width - 1, side.Height); };
 
             var brandTop = new CapsLabel("TROOPER'S", Theme.Caption, Theme.Accent, D(3)) { Location = new Point(D(26), D(26)) };
-            var brandMain = new Label { Text = "SKATE 3", Font = Theme.Brand, ForeColor = Theme.Text, AutoSize = true, Location = new Point(D(21), D(40)), UseMnemonic = false };
+            var brandMain = new TextLabel { Text = "SKATE 3", Font = Theme.Brand, ForeColor = Theme.Text, AutoSize = true, Location = new Point(D(21), D(40)), UseMnemonic = false };
             var brandSub = new CapsLabel("RECOMP LAUNCHER", Theme.Caption, Theme.Muted, D(2)) { Location = new Point(D(26), D(86)) };
             var brandBar = new Panel { Location = new Point(D(26), D(110)), Size = new Size(D(34), D(3)) };
             brandBar.Paint += (o, e) =>
@@ -1283,7 +1330,7 @@ namespace Skate3Launcher
             keepOpenBox = new ToggleSwitch { BackColor = Theme.Bg };
             keepOpenBox.Checked = ReadPref("keep_open") == "1";
             keepOpenBox.CheckedChanged += delegate { WritePref("keep_open", keepOpenBox.Checked ? "1" : "0"); };
-            var keepOpenLabel = new Label { Text = "Keep launcher open", ForeColor = Theme.Muted, Font = Theme.Base, AutoSize = true, Cursor = Cursors.Hand };
+            var keepOpenLabel = new TextLabel { Text = "Keep launcher open", ForeColor = Theme.Muted, Font = Theme.Base, AutoSize = true, Cursor = Cursors.Hand };
             keepOpenLabel.Click += delegate { keepOpenBox.Checked = !keepOpenBox.Checked; };
             tips.SetToolTip(keepOpenLabel, "Keep this window open after starting the game.");
 
@@ -1294,13 +1341,13 @@ namespace Skate3Launcher
                 LauncherPrefs.SetBool("use_tray", trayBox.Checked);
                 if (tray != null) tray.Visible = trayBox.Checked || !Visible;
             };
-            var trayLabel = new Label { Text = "Use system tray", ForeColor = Theme.Muted, Font = Theme.Base, AutoSize = true, Cursor = Cursors.Hand };
+            var trayLabel = new TextLabel { Text = "Use system tray", ForeColor = Theme.Muted, Font = Theme.Base, AutoSize = true, Cursor = Cursors.Hand };
             trayLabel.Click += delegate { trayBox.Checked = !trayBox.Checked; };
             tips.SetToolTip(trayLabel, "Minimizing hides the launcher to the tray, and PLAY tucks it into the tray while you play instead of closing it.");
 
             var fileCaption = new CapsLabel("CONFIG FILE", Theme.Caption, Theme.Subtle, D(1));
             pathLabel = new PathLabel { Font = Theme.Small, ForeColor = Theme.Muted, Height = D(20) };
-            pathNote = new Label { Font = Theme.Small, ForeColor = Theme.Warn, AutoSize = true, Text = "Will be created on save" };
+            pathNote = new TextLabel { Font = Theme.Small, ForeColor = Theme.Warn, AutoSize = true, Text = "Will be created on save" };
             side.Controls.Add(navHost);
             side.Controls.AddRange(quickButtons);
             side.Controls.AddRange(new Control[] { quickCaption, keepOpenBox, keepOpenLabel, trayBox, trayLabel, fileCaption, pathLabel, pathNote });
@@ -1333,15 +1380,15 @@ namespace Skate3Launcher
             var main = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Bg };
 
             header = new Panel { Dock = DockStyle.Top, Height = D(112), BackColor = Theme.Bg };
-            pageTitle = new Label { Font = Theme.PageTitle, ForeColor = Theme.Text, AutoSize = true, Location = new Point(D(30), D(28)), UseMnemonic = false };
-            pageBlurb = new Label { Font = Theme.Base, ForeColor = Theme.Muted, AutoSize = true, Location = new Point(D(33), D(70)), UseMnemonic = false };
+            pageTitle = new TextLabel { Font = Theme.PageTitle, ForeColor = Theme.Text, AutoSize = true, Location = new Point(D(30), D(28)), UseMnemonic = false };
+            pageBlurb = new TextLabel { Font = Theme.Base, ForeColor = Theme.Muted, AutoSize = true, Location = new Point(D(33), D(70)), UseMnemonic = false };
             var presetCaption = new CapsLabel("QUALITY PRESET", Theme.Caption, Theme.Subtle, D(1));
             presetBox = new Segmented(PresetNames) { Size = new Size(D(290), D(36)) };
             presetBox.SelectedIndex = 2;
             var applyPreset = new PillButton("Apply", "", ButtonStyle.Secondary) { Size = new Size(D(92), D(36)) };
             applyPreset.Click += delegate { ApplyPreset(PresetNames[presetBox.SelectedIndex]); };
             tips.SetToolTip(applyPreset, "Set the graphics and lighting options to this preset. Nothing is saved until you press Save or PLAY.");
-            vramLabel = new Label { Font = Theme.Small, ForeColor = Theme.Muted, AutoSize = true, UseMnemonic = false };
+            vramLabel = new TextLabel { Font = Theme.Small, ForeColor = Theme.Muted, AutoSize = true, UseMnemonic = false };
             tips.SetToolTip(vramLabel, "Rough estimate of video memory used by the current graphics settings (render targets, shadow maps and game assets). Real use varies by scene.");
             presetControls = new Control[] { presetCaption, presetBox, applyPreset, vramLabel };
             header.Controls.AddRange(new Control[] { pageTitle, pageBlurb, presetCaption, presetBox, applyPreset, vramLabel });
@@ -1406,9 +1453,9 @@ namespace Skate3Launcher
         Card BuildSettingCard(Setting s)
         {
             var card = new Card { Setting = s };
-            s.NameLabel = new Label { Text = s.Label, Font = Theme.Bold, ForeColor = Theme.Text, AutoSize = true, Location = new Point(D(20), D(14)), UseMnemonic = false };
-            card.Help = new Label { Text = s.Help, Font = Theme.Small, ForeColor = Theme.Muted, AutoSize = true, Location = new Point(D(20), D(39)), UseMnemonic = false };
-            s.WarnLabel = new Label { Font = Theme.Small, ForeColor = Theme.Warn, AutoSize = true, Visible = false, UseMnemonic = false };
+            s.NameLabel = new TextLabel { Text = s.Label, Font = Theme.Bold, ForeColor = Theme.Text, AutoSize = true, Location = new Point(D(20), D(14)), UseMnemonic = false };
+            card.Help = new TextLabel { Text = s.Help, Font = Theme.Small, ForeColor = Theme.Muted, AutoSize = true, Location = new Point(D(20), D(39)), UseMnemonic = false };
+            s.WarnLabel = new TextLabel { Font = Theme.Small, ForeColor = Theme.Warn, AutoSize = true, Visible = false, UseMnemonic = false };
             s.ResetButton = new PillButton("", "", ButtonStyle.Ghost) { Size = new Size(D(26), D(24)), Visible = false, GlyphFont = Theme.IconXs };
             var setting = s;
             s.ResetButton.Click += delegate { SetEditor(setting, setting.Default); OnEdited(); };
@@ -1480,7 +1527,7 @@ namespace Skate3Launcher
                     tb.Maximum = (int)Math.Round((s.Max - s.Min) / s.Step);
                     tb.SmallChange = 1;
                     tb.LargeChange = Math.Max(1, tb.Maximum / 10);
-                    s.ValueLabel = new Label { AutoSize = true, Font = Theme.Bold, ForeColor = Theme.Accent };
+                    s.ValueLabel = new TextLabel { AutoSize = true, Font = Theme.Bold, ForeColor = Theme.Accent };
                     tb.ValueChanged += delegate { UpdateSliderLabel(s); OnEdited(); };
                     s.Editor = s.Host = tb;
                     return tb;

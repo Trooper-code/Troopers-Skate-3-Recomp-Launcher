@@ -65,8 +65,8 @@ namespace Skate3Launcher
 
         public ToolCard(string title, string help)
         {
-            Title = new Label { Text = title, Font = Theme.Bold, ForeColor = Theme.Text, AutoSize = true, Location = new Point(Dpi.S(20), Dpi.S(14)), UseMnemonic = false };
-            HelpText = new Label { Text = help ?? "", Font = Theme.Small, ForeColor = Theme.Muted, AutoSize = true, Location = new Point(Dpi.S(20), Dpi.S(39)), UseMnemonic = false };
+            Title = new TextLabel { Text = title, Font = Theme.Bold, ForeColor = Theme.Text, AutoSize = true, Location = new Point(Dpi.S(20), Dpi.S(14)), UseMnemonic = false };
+            HelpText = new TextLabel { Text = help ?? "", Font = Theme.Small, ForeColor = Theme.Muted, AutoSize = true, Location = new Point(Dpi.S(20), Dpi.S(39)), UseMnemonic = false };
             Controls.Add(Title);
             Controls.Add(HelpText);
         }
@@ -91,8 +91,8 @@ namespace Skate3Launcher
         {
             BackColor = Theme.Card;
             Height = Dpi.S(52);
-            Main = new Label { Text = main, Font = Theme.Bold, ForeColor = Theme.Text, AutoSize = true, UseMnemonic = false, Location = new Point(0, Dpi.S(8)) };
-            Sub = new Label { Text = sub ?? "", Font = Theme.Small, ForeColor = Theme.Muted, AutoSize = true, UseMnemonic = false, Location = new Point(0, Dpi.S(29)) };
+            Main = new TextLabel { Text = main, Font = Theme.Bold, ForeColor = Theme.Text, AutoSize = true, UseMnemonic = false, Location = new Point(0, Dpi.S(8)) };
+            Sub = new TextLabel { Text = sub ?? "", Font = Theme.Small, ForeColor = Theme.Muted, AutoSize = true, UseMnemonic = false, Location = new Point(0, Dpi.S(29)) };
             Controls.Add(Main);
             Controls.Add(Sub);
             Paint += (o, e) => { using (var p = new Pen(Theme.CardBorder)) e.Graphics.DrawLine(p, 0, 0, Width, 0); };
@@ -258,7 +258,7 @@ namespace Skate3Launcher
 
         static Label MkLabel(string text, Font font, Color color)
         {
-            return new Label { Text = text, Font = font, ForeColor = color, AutoSize = true, UseMnemonic = false };
+            return new TextLabel { Text = text, Font = font, ForeColor = color, AutoSize = true, UseMnemonic = false };
         }
 
         PillButton MkButton(string text, string glyph, ButtonStyle style, string tip)
@@ -266,6 +266,8 @@ namespace Skate3Launcher
             var b = new PillButton(text, glyph, style) { Height = D(36) };
             int tw = string.IsNullOrEmpty(text) ? 0 : TextRenderer.MeasureText(text, b.Font).Width;
             b.Width = string.IsNullOrEmpty(text) ? D(38) : tw + D(string.IsNullOrEmpty(glyph) ? 32 : 56);
+            if (string.IsNullOrEmpty(text) && !Theme.HasIcons)
+                b.Width = Math.Max(D(38), TextRenderer.MeasureText(PillButton.FallbackText(glyph), Theme.Small).Width + D(20));
             if (tip != null) tips.SetToolTip(b, tip);
             return b;
         }

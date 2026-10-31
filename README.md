@@ -1,26 +1,54 @@
+<div align="center">
+
 # Trooper's Skate 3 Recomp Launcher
 
-[![Build](https://github.com/Trooper-code/Troopers-Skate-3-Recomp-Launcher/actions/workflows/build.yml/badge.svg)](https://github.com/Trooper-code/Troopers-Skate-3-Recomp-Launcher/actions/workflows/build.yml)
+**A portable launcher, settings editor and toolbox for the [Skate 3 Recomp](https://github.com/mchughalex/skate3recomp) PC port.**
 
-> **Unofficial** companion launcher for the [Skate 3 Recomp](https://github.com/mchughalex/skate3recomp) PC port. Not affiliated with the recomp developers or EA. This repo contains **no game files** — you need your own copy of the recomp.
+[![Build](https://github.com/Trooper-code/Troopers-Skate-3-Recomp-Launcher/actions/workflows/build.yml/badge.svg)](https://github.com/Trooper-code/Troopers-Skate-3-Recomp-Launcher/actions/workflows/build.yml)
+[![Latest release](https://img.shields.io/github/v/release/Trooper-code/Troopers-Skate-3-Recomp-Launcher?include_prereleases&label=download)](https://github.com/Trooper-code/Troopers-Skate-3-Recomp-Launcher/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Windows 10/11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4)
+
+![The Graphics page of the launcher](docs/screenshots/01-graphics.png)
+
+</div>
+
+> **Unofficial.** Not affiliated with the Skate 3 Recomp developers or EA. This repo contains **no game files**: you need your own copy of the recomp.
+
+## Why use it
+
+- **No more hand-editing `settings.toml`.** Every option on clean pages with plain-English help, quality presets and a live VRAM estimate. Only the keys you change are rewritten.
+- **Catches mistakes before you launch.** Settings that clash (V-Sync + G-Sync, shadow options with the emulated renderer, a typo in the menu combo…) are flagged right on the card.
+- **Picks the right GPU.** Lists your Vulkan GPUs with their VRAM, so the game never starts on the CPU's integrated graphics.
+- **Protects your career.** Saves are zipped automatically every time you press PLAY, and restores always back up first.
+- **Profiles.** Swap between "Ultra 4K", "Ultrawide" and "Potato laptop" in one click, or from a desktop shortcut.
+- **Crash help.** A log viewer that highlights errors, tells you if the last session crashed, and builds a bug report in one click.
+- **Plus:** controller tester, menu-combo recorder, update check, shader-cache cleaner, system tray, Discord Rich Presence and command-line quick play.
+- **One portable `.exe`.** No installer, no extra DLLs. It runs on the .NET Framework every Windows 10/11 PC already has.
 
 ## Download
 
-1. Grab `TroopersSkate3Launcher-vX.Y.Z-win.zip` from [Releases](https://github.com/Trooper-code/Troopers-Skate-3-Recomp-Launcher/releases).
+1. Grab `TroopersSkate3Launcher-vX.Y.Z-win.zip` from [**Releases**](https://github.com/Trooper-code/Troopers-Skate-3-Recomp-Launcher/releases).
 2. Extract `Trooper's Skate 3 Recomp Launcher.exe` into your Skate 3 Recomp folder, next to `skate3.exe`.
-3. Run it. Windows 10/11 already has everything it needs (.NET Framework 4.5+).
+3. Run it.
 
-**Windows SmartScreen:** the exe isn't code-signed, so the first launch may show "Windows protected your PC". Click **More info → Run anyway**. Every release is built by GitHub Actions straight from this source, so you can check exactly what you're running.
+**Windows SmartScreen:** the exe isn't code-signed, so the first launch may show "Windows protected your PC". Click **More info → Run anyway**. Every release is built by GitHub Actions straight from this source.
+
+## Screenshots
+
+| | |
+|:-:|:-:|
+| ![Conflict warning on V-Sync](docs/screenshots/02-display-warning.png)<br>**Conflict warnings** flag settings that fight each other | ![Ultra preset applied](docs/screenshots/12-preset-ultra.png)<br>**Quality presets** with a live VRAM estimate and unsaved-change markers |
+| ![Lighting options with warnings](docs/screenshots/03-lighting-warnings.png)<br>**Lighting & Shadows**: every native-renderer enhancement | ![GPU picker](docs/screenshots/05-gpu-picker.png)<br>**GPU picker** and per-setting reset buttons |
+| ![Advanced search](docs/screenshots/06-advanced-search.png)<br>**Advanced**: search every setting, edit any raw cvar | ![Profiles page](docs/screenshots/07-profiles.png)<br>**Profiles**, settings history and one-click shortcuts |
+| ![Saves page](docs/screenshots/08-saves.png)<br>**Save backups** and one-click restore, plus DLC | ![Controller page](docs/screenshots/09-controller.png)<br>**Controller tester** and menu-combo recorder |
+| ![Logs page](docs/screenshots/10-logs.png)<br>**Logs**: crash check, filtered viewer, bug reports | ![Launcher page](docs/screenshots/11-launcher.png)<br>**Launcher tools**: updates, GPU preference, cache, Discord |
+
+<sub>The screenshots were captured on a test machine without the Windows icon fonts, so buttons show text where Windows shows icons.</sub>
 
 ---
 
-A single, portable `.exe` that sits next to `skate3.exe` from the [Skate 3 Recomp](https://github.com/mchughalex/skate3recomp) and lets you configure, launch and look after the game without ever opening `settings.toml` by hand.
-
-- **Portable:** one file, no installer, no extra DLLs. It needs only the .NET Framework 4.5+ that every Windows 10/11 PC already has.
-- **Safe with your config:** it only rewrites the keys you change. Every other key and comment in `settings.toml` is kept, and every save is backed up first.
-- **Where it keeps things:** next to the game's own data in `%APPDATA%\skate3` (see [Files the launcher creates](#files-the-launcher-creates)). The launcher's own folder is never written to, apart from rebuilding the exe.
-
----
+# Full guide
 
 ## Contents
 
@@ -126,6 +154,8 @@ If `settings.toml` holds a value that isn't in a dropdown's list, the dropdown s
 
 ## Quality presets and VRAM estimate
 
+![Quality presets and VRAM estimate](docs/screenshots/12-preset-ultra.png)
+
 **Low / Medium / High / Ultra** plus **Apply** set render scale, MSAA, draw and LOD distance, every shadow option, SSAO, sun shafts, haze, packed HDR, and turn on the Native renderer, dynamic shadows and bloom. Applying a preset only changes what's on screen; nothing is saved until you press Save or PLAY.
 
 | Preset | Render scale | MSAA | Draw / LOD | Shadow tile | PCSS | Static shadows | SSAO |
@@ -140,6 +170,8 @@ If `settings.toml` holds a value that isn't in a dropdown's list, the dropdown s
 ---
 
 ## Conflict warnings
+
+![Conflict warnings](docs/screenshots/03-lighting-warnings.png)
 
 The launcher checks your settings against each other and puts a ⚠ line on the affected card:
 
@@ -165,6 +197,8 @@ Warnings never block saving. They're there to tell you a setting won't do what y
 
 ## Advanced page
 
+![Advanced page](docs/screenshots/06-advanced-search.png)
+
 - **Search every setting:** type part of a name, cvar key or description (Ctrl+F jumps here). Matching settings on other pages appear as buttons; clicking one opens that page, scrolls to the card and highlights it. The raw keys further down are filtered as you type too.
 - **Add or override a key:** writes any cvar into `settings.toml` on the next save, for options the game supports that the launcher doesn't list. Text values are quoted for you; `true`/`false`, numbers, quoted strings, arrays and tables are written as typed. Queued keys are listed until you save, and **Clear queued** forgets them. If the key already has a card somewhere, the launcher takes you to that card instead.
 - **Open settings.toml in Notepad.**
@@ -173,6 +207,8 @@ Warnings never block saving. They're there to tell you a setting won't do what y
 ---
 
 ## Profiles page
+
+![Profiles page](docs/screenshots/07-profiles.png)
 
 - **Save current settings as a profile:** give it a name such as "Ultra 4K" or "Ultrawide" and press **Save profile** (or Enter). This captures everything on screen, *including unsaved changes*, plus every other key in your file.
 - **Your profiles:** one row per profile, with these buttons:
@@ -188,6 +224,8 @@ Warnings never block saving. They're there to tell you a setting won't do what y
 
 ## Saves & DLC page
 
+![Saves & DLC page](docs/screenshots/08-saves.png)
+
 - **Save data:** lists each gamer-profile save folder (for example `B13E07DFF9AB6772`) with its size and when it was last saved. Buttons: **Back up now** and **Open save folder**.
 - **Automatic backups:** **Back up saves before every launch** is on by default. It zips every save folder into `launcher-backups` each time you press PLAY or use a quick-play shortcut. **Keep the newest** (5 / 10 / 20 / 50, default 10) applies only to *automatic* backups. Manual and pre-restore backups are never deleted for you. A failed backup never stops the game from launching.
 - **Backups:** the newest 20 backups, each with its date, type (Automatic / Manual / Before a restore) and size.
@@ -200,6 +238,8 @@ Warnings never block saving. They're there to tell you a setting won't do what y
 
 ## Controller page
 
+![Controller page](docs/screenshots/09-controller.png)
+
 Live controller polling runs only while this page is open.
 
 - **Xbox controllers (XInput):** pick **Slot 1–4** to see that controller's live state. Both sticks, both triggers and all 14 buttons light up as you press them. The line underneath shows which slots are connected. **Test rumble** buzzes the selected controller for about half a second.
@@ -209,6 +249,8 @@ Live controller polling runs only while this page is open.
 ---
 
 ## Logs page
+
+![Logs page](docs/screenshots/10-logs.png)
 
 - **Last session:** reads the newest log in the game's `logs` folder and tells you whether the game is running, whether the last session **ended cleanly**, or whether the log **stops without the normal shutdown lines** (usually a crash or forced close). It also shows the file, when it was written, the game version and the error/warning counts.
 - **Log viewer:**
@@ -226,6 +268,8 @@ Live controller polling runs only while this page is open.
 ---
 
 ## Launcher page
+
+![Launcher page](docs/screenshots/11-launcher.png)
 
 - **Updates:** shows your installed Skate 3 Recomp version (read from the game's log, or from `skate3.exe` itself) and the latest release on GitHub.
   - **Check now** and **Open releases page**.
