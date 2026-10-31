@@ -32,7 +32,18 @@
 2. Extract `Trooper's Skate 3 Recomp Launcher.exe` into your Skate 3 Recomp folder, next to `skate3.exe`.
 3. Run it.
 
+v3.0.0 is the **first public release**. See the [release notes](https://github.com/Trooper-code/Troopers-Skate-3-Recomp-Launcher/releases) and the [Roadmap](#roadmap) for what's coming.
+
 **Windows SmartScreen:** the exe isn't code-signed, so the first launch may show "Windows protected your PC". Click **More info → Run anyway**. Every release is built by GitHub Actions straight from this source.
+
+## Roadmap
+
+This is the first public release. Planned next:
+
+- [ ] **Mod loader:** install, enable, disable and order mods from inside the launcher.
+- [ ] **Texture pack support:** add, switch between and manage custom texture packs.
+
+Suggestions and bug reports are welcome in [Issues](https://github.com/Trooper-code/Troopers-Skate-3-Recomp-Launcher/issues).
 
 ## Screenshots
 
@@ -397,7 +408,7 @@ Double-click **`src\build.cmd`** (or run it from a terminal). It uses `%WINDIR%\
 
 The exe gets the Skate 3 icon only if `src\skate3.ico` exists, or if `skate3.exe` is one folder above `src`, in which case the icon is extracted automatically. The icon is EA artwork, so it isn't committed.
 
-**Releases:** pushing a tag like `v3.0.1` makes GitHub Actions build the exe on Windows, zip it with the README and LICENSE, and create a **draft** GitHub release with that zip attached — review it on the Releases page and press Publish. Every push and pull request is also built, and the zip is attached to the run as an artifact.
+**Releases:** put the release notes in `.github/release-notes/vX.Y.Z.md`, then push the tag. Pushing a tag like `v3.0.1` makes GitHub Actions build the exe on Windows, zip it with the README and LICENSE, and create a **draft** GitHub release with those notes and the zip attached — review it on the Releases page and press Publish. Every push and pull request is also built, and the zip is attached to the run as an artifact.
 
 ---
 

@@ -32,6 +32,8 @@ jobs:
           Copy-Item README.md, LICENSE $dir
           Compress-Archive -Path $dir -DestinationPath "$dir-win.zip"
           "ZIP=$dir-win.zip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $notes = ".github/release-notes/$version.md"
+          if (Test-Path $notes) { "NOTES=$notes" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8 }
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -44,5 +46,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ env.ZIP }}
-          generate_release_notes: true
+          body_path: ${{ env.NOTES }}
+          generate_release_notes: ${{ env.NOTES == '' }}
           draft: true
