@@ -1,0 +1,17 @@
+# build output
+bin/
+obj/
+*.exe
+*.pdb
+*.zip
+
+# never commit the game or its data
+skate3.exe
+rexruntime.dll
+game/
+logs/
+*.log
+settings.toml
+
+# the Skate 3 icon is EA artwork - keep it local
+src/skate3.ico
