@@ -15,9 +15,9 @@
 
 > **Unofficial.** Not affiliated with the Skate 3 Recomp developers or EA. This repo contains **no game files**: you need your own copy of the recomp.
 
-## Why use it
+## Why use it?
 
-- **No more hand-editing `settings.toml`.** Every option on clean pages with plain-English help, quality presets and a live VRAM estimate. Only the keys you change are rewritten.
+- **No more hand-editing!! `settings.toml`.** Every option on clean pages with plain-English help, quality presets and a live VRAM estimate. Only the keys you change are rewritten.
 - **Catches mistakes before you launch.** Settings that clash (V-Sync + G-Sync, shadow options with the emulated renderer, a typo in the menu combo…) are flagged right on the card.
 - **Picks the right GPU.** Lists your Vulkan GPUs with their VRAM, so the game never starts on the CPU's integrated graphics.
 - **Protects your career.** Saves are zipped automatically every time you press PLAY, and restores always back up first.
@@ -25,14 +25,13 @@
 - **Crash help.** A log viewer that highlights errors, tells you if the last session crashed, and builds a bug report in one click.
 - **Plus:** controller tester, menu-combo recorder, update check, shader-cache cleaner, system tray, Discord Rich Presence and command-line quick play.
 - **One portable `.exe`.** No installer, no extra DLLs. It runs on the .NET Framework every Windows 10/11 PC already has.
-
 ## Download
 
 1. Grab `TroopersSkate3Launcher-vX.Y.Z-win.zip` from [**Releases**](https://github.com/Trooper-code/Troopers-Skate-3-Recomp-Launcher/releases).
 2. Extract `Trooper's Skate 3 Recomp Launcher.exe` into your Skate 3 Recomp folder, next to `skate3.exe`.
 3. Run it.
 
-v3.0.0 is the **first public release**. See the [release notes](https://github.com/Trooper-code/Troopers-Skate-3-Recomp-Launcher/releases) and the [Roadmap](#roadmap) for what's coming.
+v3.0.0 is the **FIRST public release**. See the [release notes](https://github.com/Trooper-code/Troopers-Skate-3-Recomp-Launcher/releases) and the [Roadmap](#roadmap) for what's coming.
 
 **Windows SmartScreen:** the exe isn't code-signed, so the first launch may show "Windows protected your PC". Click **More info → Run anyway**. Every release is built by GitHub Actions straight from this source.
 
@@ -43,6 +42,8 @@ This is the first public release. Planned next:
 - [ ] **Mod loader:** install, enable, disable and order mods from inside the launcher.
 - [ ] **Texture pack support:** add, switch between and manage custom texture packs.
 
+**NOT PLANNED**
+-I WILL NOT BE IMPLEMENTING NETWORKING CAPABILITIES. THIS IS BEYOND MY SCOPE OF UNDERSTANDING, AND THEREFORE IS **NOT** PLANNED. HOWEVER IS SOMEONE DOES IT BEFORE ME I WILL MORE THAN LIKELY FIGURE OUT HOW TO INTEGRATE SUPPORT FOR THEIR TOOL INTO MY LAUNCHER.
 Suggestions and bug reports are welcome in [Issues](https://github.com/Trooper-code/Troopers-Skate-3-Recomp-Launcher/issues).
 
 ## Screenshots
