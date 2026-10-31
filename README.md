@@ -42,8 +42,9 @@ This is the first public release. Planned next:
 - [ ] **Mod loader:** install, enable, disable and order mods from inside the launcher.
 - [ ] **Texture pack support:** add, switch between and manage custom texture packs.
 
-**NOT PLANNED**
+**MUTLIPLAYERNOT PLANNED**
 -I WILL NOT BE IMPLEMENTING NETWORKING CAPABILITIES. THIS IS BEYOND MY SCOPE OF UNDERSTANDING, AND THEREFORE IS **NOT** PLANNED. HOWEVER IS SOMEONE DOES IT BEFORE ME I WILL MORE THAN LIKELY FIGURE OUT HOW TO INTEGRATE SUPPORT FOR THEIR TOOL INTO MY LAUNCHER.
+
 Suggestions and bug reports are welcome in [Issues](https://github.com/Trooper-code/Troopers-Skate-3-Recomp-Launcher/issues).
 
 ## Screenshots
