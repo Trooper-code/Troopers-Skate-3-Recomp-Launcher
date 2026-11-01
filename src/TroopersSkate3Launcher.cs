@@ -18,8 +18,8 @@ using System.Windows.Forms;
 
 [assembly: System.Reflection.AssemblyTitle("Trooper's Skate 3 Recomp Launcher")]
 [assembly: System.Reflection.AssemblyProduct("Trooper's Skate 3 Recomp Launcher")]
-[assembly: System.Reflection.AssemblyVersion("3.0.0.0")]
-[assembly: System.Reflection.AssemblyFileVersion("3.0.0.0")]
+[assembly: System.Reflection.AssemblyVersion("3.1.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("3.1.0.0")]
 
 namespace Skate3Launcher
 {
@@ -984,7 +984,7 @@ namespace Skate3Launcher
     partial class MainForm : Form
     {
         public const string AppName = "Trooper's Skate 3 Recomp Launcher";
-        public const string LauncherVersion = "3.0.0";
+        public const string LauncherVersion = "3.1.0";
         readonly string userDir;
         readonly string configPath;
         string gameExe;
@@ -1042,6 +1042,7 @@ namespace Skate3Launcher
             ReloadFromFile();
             if (!string.IsNullOrEmpty(startupProfile)) LoadProfileByName(startupProfile, false);
             SetupTray();
+            SetupV31();
 
             runningTimer = new Timer();
             runningTimer.Interval = 1500;
@@ -1059,6 +1060,7 @@ namespace Skate3Launcher
 
         protected override void OnKeyDown(KeyEventArgs e)
         {
+            if (HandleBindCapture(e)) { base.OnKeyDown(e); return; }
             if (e.Control && e.KeyCode == Keys.S) { SaveSettings(true); e.Handled = e.SuppressKeyPress = true; }
             else if (e.Control && e.KeyCode == Keys.F) { ShowPage("Advanced"); FocusAdvancedSearch(); e.Handled = e.SuppressKeyPress = true; }
             base.OnKeyDown(e);
@@ -1168,6 +1170,8 @@ namespace Skate3Launcher
             input.Settings.Add(B("skate3_intro_movie_skip", "Skippable intro movies", "Lets you skip the intro movies with A / Start (Space / Enter on keyboard).", true));
             list.Add(input);
 
+            list.Add(BuildPhotoCategory());
+
             var other = new Category { Name = "Audio & System", Glyph = "", Blurb = "Sound, language and graphics API." };
             other.Settings.Add(B("audio_mute", "Mute audio", "Silence all game audio.", false));
             other.Settings.Add(C("audio_device_sample_frames", "Audio buffer size", "Larger buffers add a little latency but fix crackling on machines with scheduling hiccups.", "0",
@@ -1266,7 +1270,7 @@ namespace Skate3Launcher
             };
             updateBadge = new PillButton("Update available", "", ButtonStyle.Primary) { Visible = false, Font = Theme.Small, GlyphFont = Theme.IconSm };
             updateBadge.SetBounds(D(22), D(124), D(196), D(30));
-            updateBadge.Click += delegate { string u = LauncherPrefs.Read("update_latest_url"); if (!string.IsNullOrEmpty(u)) OpenUrl(u); };
+            updateBadge.Click += delegate { ShowPage("Game files"); };
             side.Controls.AddRange(new Control[] { brandTop, brandMain, brandSub, brandBar, updateBadge });
 
             // pages first, so the navigation can be built from them
@@ -1295,6 +1299,11 @@ namespace Skate3Launcher
             }
             Action layoutNav = delegate
             {
+                // shrink the entries (36 px down to 28 px) so every page fits without scrolling when possible
+                int captionsH = navCaptions.Sum(c => c.Height + D(8)) + D(10) * Math.Max(0, navCaptions.Count - 1) + D(8);
+                int fit = (navHost.ClientSize.Height - captionsH) / Math.Max(1, pageInfos.Count) - D(2);
+                int itemH = Math.Max(D(28), Math.Min(D(36), fit));
+                foreach (var info in pageInfos) if (info.Nav.Height != itemH) info.Nav.Height = itemH;
                 int y = D(4) + navHost.AutoScrollPosition.Y;
                 string sec = null;
                 foreach (var info in pageInfos)
@@ -1307,7 +1316,7 @@ namespace Skate3Launcher
                         y += cap.Height + D(8);
                         sec = info.Section;
                     }
-                    info.Nav.SetBounds(D(12), y, side.Width - D(26), info.Nav.Height);
+                    info.Nav.SetBounds(D(12), y, Math.Max(D(60), navHost.ClientSize.Width - D(25)), info.Nav.Height);   // ClientSize leaves room for a scrollbar
                     y += info.Nav.Height + D(2);
                 }
             };
@@ -1561,7 +1570,7 @@ namespace Skate3Launcher
             currentPage = info;
             pageTitle.Text = info.Name;
             pageBlurb.Text = info.Blurb;
-            foreach (var c in presetControls) c.Visible = info.IsSettings;
+            foreach (var c in presetControls) c.Visible = info.IsSettings && info.Name != "Photo Mode";
             foreach (var p in pageInfos) p.Page.Visible = p == info;
             foreach (var p in pageInfos) p.Nav.Selected = p == info;
             if (info.OnShow != null) info.OnShow();
@@ -1954,6 +1963,7 @@ namespace Skate3Launcher
             if (target != null && target.VramBytes > 0 && target.Type != 1 && est > target.VramBytes / 1048576.0 * 0.9)
                 w["resolution_scale"] = "Estimated VRAM use (≈" + (est / 1024).ToString("0.0", CultureInfo.InvariantCulture) + " GB) is close to or above this GPU's " +
                     Math.Round(target.VramBytes / 1073741824.0) + " GB. Expect stutter — lower render scale, MSAA or shadow resolution.";
+            ComputeV31Warnings(w);
             return w;
         }
 
@@ -2149,7 +2159,9 @@ namespace Skate3Launcher
             Process p;
             try
             {
-                p = Process.Start(new ProcessStartInfo(gameExe) { WorkingDirectory = Path.GetDirectoryName(gameExe), UseShellExecute = true });
+                var plan = GameLaunch.Prepare(gameExe);
+                if (plan.Error == null && !ConfirmModWarnings(plan)) return;
+                p = GameLaunch.Start(gameExe, plan);
             }
             catch (Exception ex)
             {
@@ -2192,6 +2204,7 @@ namespace Skate3Launcher
             if (gameProc != null) { try { gameProc.Dispose(); } catch { } }
             gameProc = null;
 
+            if (Mods.ScrubConfig(configPath)) ReloadFromFile();
             if (code != 0) ShowCrashReport(code, ran);
             if (closeWhenGameExits) { Close(); return; }
             if (!Visible && TrayEnabled) RestoreFromTray();
@@ -2431,8 +2444,15 @@ namespace Skate3Launcher
             if (LauncherPrefs.Bool("auto_backup_saves", true))
                 try { SaveData.Backup("auto"); SaveData.PruneAuto(LauncherPrefs.Int("backup_keep", 10)); } catch { }
 
+            Benchmarks.RecoverConfig();
             Process p;
-            try { p = Process.Start(new ProcessStartInfo(exe) { WorkingDirectory = Path.GetDirectoryName(exe), UseShellExecute = true }); }
+            try
+            {
+                var plan = GameLaunch.Prepare(exe);
+                if (plan.Error == null && plan.Warnings.Count > 0 &&
+                    MessageBox.Show(string.Join("\n\n", plan.Warnings) + "\n\nPlay anyway?", MainForm.AppName, MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return 1;
+                p = GameLaunch.Start(exe, plan);
+            }
             catch (Exception ex) { MessageBox.Show("Couldn't start the game:\n\n" + ex.Message, MainForm.AppName, MessageBoxButtons.OK, MessageBoxIcon.Error); return 1; }
 
             string appId = LauncherPrefs.Read("discord_app_id");

@@ -23,7 +23,11 @@
 - **Protects your career.** Saves are zipped automatically every time you press PLAY, and restores always back up first.
 - **Profiles.** Swap between "Ultra 4K", "Ultrawide" and "Potato laptop" in one click, or from a desktop shortcut.
 - **Crash help.** A log viewer that highlights errors, tells you if the last session crashed, and builds a bug report in one click.
-- **Plus:** controller tester, menu-combo recorder, update check, shader-cache cleaner, system tray, Discord Rich Presence and command-line quick play.
+- **Mods without touching your game files.** Install, enable and order mods; the launcher builds a modded copy of the game folder out of hard links, so it takes no extra space.
+- **Installs and updates the recomp.** One click downloads the latest Skate 3 Recomp build from GitHub, with a backup so you can roll back.
+- **Spots a broken install before you launch.** First-run setup checklist, Title Update 3 check and a full game-file hash check.
+- **Real benchmark numbers.** The game drives itself to the same spot every time while the launcher records frame times, so you can compare presets and profiles.
+- **Plus:** Photo Mode page (free camera and screenshot keys), Add to Steam, graphics-driver check, pre-filled GitHub crash reports, controller navigation, controller tester, menu-combo recorder, shader-cache cleaner, system tray, Discord Rich Presence and command-line quick play.
 - **One portable `.exe`.** No installer, no extra DLLs. It runs on the .NET Framework every Windows 10/11 PC already has.
 ## Download
 
@@ -31,16 +35,14 @@
 2. Extract `Trooper's Skate 3 Recomp Launcher.exe` into your Skate 3 Recomp folder, next to `skate3.exe`.
 3. Run it.
 
-v3.0.0 is the **FIRST public release**. See the [release notes](https://github.com/Trooper-code/Troopers-Skate-3-Recomp-Launcher/releases) and the [Roadmap](#roadmap) for what's coming.
+v3.1.0 adds a **mod loader**, **recomp updates with rollback**, **game-file checks**, a **benchmark** and more. See the [release notes](https://github.com/Trooper-code/Troopers-Skate-3-Recomp-Launcher/releases) and the [Roadmap](#roadmap) for what's coming.
 
 **Windows SmartScreen:** the exe isn't code-signed, so the first launch may show "Windows protected your PC". Click **More info → Run anyway**. Every release is built by GitHub Actions straight from this source.
 
 ## Roadmap
 
-This is the first public release. Planned next:
-
-- [ ] **Mod loader:** install, enable, disable and order mods from inside the launcher.
-- [ ] **Texture pack support:** add, switch between and manage custom texture packs.
+- [x] **Mod loader:** install, enable, disable and order mods from inside the launcher (v3.1.0).
+- [ ] **Texture pack support:** add, switch between and manage custom texture packs, including mods that change individual files inside the game's archives.
 
 **MUTLIPLAYER NOT PLANNED**
 -I WILL NOT BE IMPLEMENTING NETWORKING CAPABILITIES. THIS IS BEYOND MY SCOPE OF UNDERSTANDING, AND THEREFORE IS **NOT** PLANNED. HOWEVER IS SOMEONE DOES IT BEFORE ME I WILL MORE THAN LIKELY FIGURE OUT HOW TO INTEGRATE SUPPORT FOR THEIR TOOL INTO MY LAUNCHER.
@@ -73,18 +75,21 @@ Suggestions and bug reports are welcome in [Issues](https://github.com/Trooper-c
 6. [Conflict warnings](#conflict-warnings)
 7. [Advanced page](#advanced-page)
 8. [Profiles page](#profiles-page)
-9. [Saves & DLC page](#saves--dlc-page)
-10. [Controller page](#controller-page)
-11. [Logs page](#logs-page)
-12. [Launcher page](#launcher-page)
-13. [What happens when you press PLAY](#what-happens-when-you-press-play)
-14. [System tray](#system-tray)
-15. [Discord Rich Presence](#discord-rich-presence)
-16. [Command line and shortcuts](#command-line-and-shortcuts)
-17. [Keyboard shortcuts](#keyboard-shortcuts)
-18. [Files the launcher creates](#files-the-launcher-creates)
-19. [Building from source](#building-from-source)
-20. [Troubleshooting](#troubleshooting)
+9. [Game files page](#game-files-page)
+10. [Mods page](#mods-page)
+11. [Saves & DLC page](#saves--dlc-page)
+12. [Benchmark page](#benchmark-page)
+13. [Controller page](#controller-page)
+14. [Logs page](#logs-page)
+15. [Launcher page](#launcher-page)
+16. [What happens when you press PLAY](#what-happens-when-you-press-play)
+17. [System tray](#system-tray)
+18. [Discord Rich Presence](#discord-rich-presence)
+19. [Command line and shortcuts](#command-line-and-shortcuts)
+20. [Keyboard and controller shortcuts](#keyboard-and-controller-shortcuts)
+21. [Files the launcher creates](#files-the-launcher-creates)
+22. [Building from source](#building-from-source)
+23. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -100,9 +105,9 @@ Suggestions and bug reports are welcome in [Issues](https://github.com/Trooper-c
 
 | Area | What it does |
 |---|---|
-| **Sidebar → Settings** | Display, Graphics, Lighting & Shadows, Controls, Audio & System, Advanced. |
-| **Sidebar → Tools** | Profiles, Saves & DLC, Controller, Logs, Launcher. |
-| **Update badge** (under the logo) | Appears only when a newer Skate 3 Recomp release is out. Click it to open the release page. |
+| **Sidebar → Settings** | Display, Graphics, Lighting & Shadows, Controls, Photo Mode, Audio & System, Advanced. |
+| **Sidebar → Tools** | Game files, Mods, Profiles, Saves & DLC, Benchmark, Controller, Logs, Launcher. |
+| **Update badge** (under the logo) | Appears only when a newer Skate 3 Recomp release is out. Click it to install it from the Game files page. |
 | **Quick access** (four icon buttons) | Open the settings folder · Open the game's `logs` folder · Open `settings.toml` in Notepad · **Restore backup** (puts `settings.toml` back to how it was before the launcher first changed it). Hover any button for its name. |
 | **Keep launcher open** | Leaves the window open after PLAY instead of closing it. |
 | **Use system tray** | Minimizing sends the launcher to the tray, and PLAY tucks it into the tray while you play (see [System tray](#system-tray)). |
@@ -145,6 +150,16 @@ Dynamic shadows, Enhanced shadow resolution, Soft shadows (PCSS), Static sun sha
 - **Mouse & keyboard mode** (`mnk_mode`), **Capture mouse** (`mnk_capture_mouse`), **Mouse sensitivity** (`mnk_sensitivity`).
 - **Settings menu button combo** (`menu_chord`): typed here, or picked and recorded on the [Controller page](#controller-page).
 - **Skippable intro movies** (`skate3_intro_movie_skip`).
+
+### Photo Mode
+- **Free camera speed** (`skate3_native_render_scene_freecam_speed`, 0.5–100 m/s) and **Free camera look speed** (`skate3_native_render_scene_freecam_look_speed`, 10–360°/s).
+- **Freeze the skater while flying** (`skate3_native_render_scene_freecam_capture_input`).
+- **Free camera key** (`bind_skate3_freecam`, End), **Screenshot key** (`bind_skate3_screenshot`, F6), **Renderer toggle key** (`bind_skate3_native_render_toggle`, F5) and **Settings menu key (alternate)** (`bind_skate3_menu_alt`, F1).
+- **Rebind a key:** click a button, then press the key or combo (for example Ctrl+Shift+P). Key names are written exactly the way the recomp spells them.
+- **Free camera controls:** a summary of the in-game controls (WASD to fly, E/Space up, Q/C down, arrows or right-mouse drag to look, Z/X zoom, Shift fast, Ctrl slow). The free camera needs Renderer = Native.
+- **Screenshots:** how many you've taken, **Open screenshots folder** (`screenshots` next to `skate3.exe`) and **Open latest**.
+
+The quality-preset picker is hidden on this page because presets don't touch these options.
 
 ### Audio & System
 - **Mute audio** (`audio_mute`) and **Audio buffer size** (`audio_device_sample_frames`).
@@ -203,6 +218,8 @@ The launcher checks your settings against each other and puts a ⚠ line on the 
 | Monitor number higher than the number of connected monitors | Monitor. |
 | A Vulkan GPU is chosen but Graphics API isn't Vulkan, the index doesn't exist, or it's the integrated GPU while a discrete one exists | Graphics card (Vulkan). |
 | Estimated VRAM above 90% of the GPU's memory | Render scale. |
+| A key bind is empty, isn't a key name the recomp knows, or is already used (by another bind or by the recomp's own F2–F4, F8–F12, Backtick or Escape) | That key bind on the Photo Mode page. |
+| Renderer is **Emulated** | Free camera key and Free camera speed (the free camera needs Native). |
 
 Warnings never block saving. They're there to tell you a setting won't do what you might expect.
 
@@ -235,6 +252,40 @@ Warnings never block saving. They're there to tell you a setting won't do what y
 
 ---
 
+## Game files page
+
+- **Setup checklist:** whether `skate3.exe` was found, the game files are installed, `default.xex` is the version the recomp is built for, **Title Update 3** is staged (checked against the same SHA-256 hashes the recomp's own installer uses), `EAWebkit.xex` is present, and the drive is NTFS (needed by the mod loader). If the game files aren't installed yet, **Start the game's installer** runs `skate3.exe` so you can pick your ISO. On startup the launcher runs this check quietly and opens this page if something's missing.
+- **Skate 3 Recomp version:** your installed version and the latest release on GitHub.
+  - **Install vX.Y.Z** downloads `Skate3Recomp-Windows.zip` and installs it over your current build. Every file it replaces is backed up into `recomp-backups` first, and if anything goes wrong mid-install the old build is put back automatically. Your `game` folder, saves, settings, mods and this launcher are never touched.
+  - **Install from a zip…** installs a release zip you already downloaded.
+  - **Roll back** (one row per backup, newest 3 kept) puts the previous build back.
+- **Check game files:** **Quick check** compares file sizes; **Full check** hashes every file (about 6 GB) against a known-good NTSC-U dump. Other regions show differences here, so if your game runs fine, press **Save as my baseline** once and later checks compare against your own files.
+
+---
+
+## Mods page
+
+- **Load enabled mods when I press PLAY:** the master switch.
+- **Install from .zip… / Install from folder…** copies a mod into the `mods` folder next to `skate3.exe` and enables it. **Open mods folder** opens it; you can also drop mod folders in by hand (new folders start disabled).
+- **Installed mods:** one row per mod with its file count and size, and whether it overrides (or is overridden by) another mod. Buttons: **Enable / Disable**, ▲ / ▼ to change the load order, open its folder, and remove it. **Mods lower in the list win** when two mods replace the same file.
+
+**How it works:** when you press PLAY with mods enabled, the launcher builds `mods\.active-game`, a copy of your `game` folder made of hard links (so it takes no extra space), swaps in the mods' files, and starts the game with `--game_data_root` pointing at it. Your real `game` folder is never changed, and it's only rebuilt when something changes. With no mods enabled the game starts normally. Mods can't replace `default.xex`, `default.xexp` or the EAWebkit files, because the recomp's code is built against exactly those.
+
+If a game file a mod replaces changes later (for example after a game or recomp update), you're warned once before launching.
+
+**Making a mod:** a folder laid out like the `game` folder, holding only the files you change:
+
+```
+mods\
+  My Deck Pack\
+    mod.json                         (optional)
+    data\content\createacharacter.big
+```
+
+`mod.json` is optional and can hold `name`, `author`, `version` and `description`. A `game` subfolder, or one wrapper folder (which most zips have), works too. Files must be the Xbox 360 versions: PS3 mods use different formats (`.psg` instead of `.rx2`, for example) and won't load.
+
+---
+
 ## Saves & DLC page
 
 ![Saves & DLC page](docs/screenshots/08-saves.png)
@@ -246,6 +297,19 @@ Warnings never block saving. They're there to tell you a setting won't do what y
   - 🗑 **Delete** a backup.
   - **Open backups folder.**
 - **DLC:** lists the files in `%APPDATA%\skate3\dlc`, the folder the game loads DLC packages from. **Add DLC files…** copies the packages you choose into it, and **Open DLC folder** opens it. Only use DLC you legally own.
+
+---
+
+## Benchmark page
+
+- **Run a benchmark:** pick a **Route**, the **Settings** to test (your current settings or any saved profile) and a **Length** (2,400 / 6,000 / 12,000 frames), then **Run benchmark**.
+  - **Spawn point (stand still)** measures the spot where gameplay starts.
+  - **PCU Library** uses the map-switch route from the recomp's own demo-path help text.
+  - **Custom inputs** takes your own comma-separated list (`a b x y start back lb rb lt rt up down left right l3 r3`, with `:ms` to wait after one, for example `rt:1500`).
+- **What happens:** the launcher saves your settings, adds the benchmark options to `settings.toml` (`skate3_demo_path`, `skate3_demo_path_gameplay_inputs`, `presenter_present_cadence_log` and a couple more), starts the game, and lets the recomp's demo-path automation boot straight to gameplay. That boot is **signed out**, so your career save is never touched. After the scene settles it reads the frame-pacing lines the recomp logs every 600 frames, closes the game, and puts `settings.toml` back exactly as it was. If the launcher is closed halfway, your settings are restored the next time it starts.
+- **Results:** average FPS, worst frame (the longest single frame) and jitter (how unevenly frames arrive), with the settings, GPU and the change against the previous run on the same route. The best run is starred. **Copy results** and **Open results file** (`launcher-benchmarks.csv`).
+
+Don't touch the keyboard or controller while it runs.
 
 ---
 
@@ -276,6 +340,13 @@ Live controller polling runs only while this page is open.
   - **Save bug report (.zip):** writes `Skate3-bug-report-<date>.zip` to your desktop (`report.txt` + `settings.toml` + the newest two logs) and highlights it in Explorer.
   - **Delete old logs:** keeps the newest 3 logs and deletes the rest after telling you how much space that frees. The current log-folder size is shown underneath.
 
+- **Report a crash:**
+  - **Report on GitHub…** asks whether the problem is with the game or the launcher, then opens a new GitHub issue in the right project, pre-filled with your versions, PC, GPU driver, enabled mods, game-file status and the last session's status. The full bug report is copied to your clipboard to paste in.
+  - **Keep crash dumps** asks Windows (one admin prompt) to save a small `.dmp` file whenever `skate3.exe` crashes. The newest dump from the last two weeks is added to the bug report zip.
+  - **Open crash dumps folder** (`%LOCALAPPDATA%\CrashDumps`).
+
+The bug report also lists your GPU driver, enabled mods, game-file check result and crash-dump status.
+
 **Crash detection:** if the launcher is still running when the game exits with an error code (because Keep launcher open, the tray or Discord presence is on), it pops up the exit code, how long the game ran, and the last few warning/error lines from the log, then offers to open the Logs page.
 
 ---
@@ -288,8 +359,11 @@ Live controller polling runs only while this page is open.
   - **Check now** and **Open releases page**.
   - **Check when the launcher starts:** on by default, and checks at most once every 12 hours.
   - **Release source:** the GitHub `owner/repo` to check. The default is `mchughalex/skate3recomp`; change it if you follow a fork.
-  - The launcher **never downloads or installs anything**. It only tells you an update exists (the sidebar badge) and opens the release page.
+  - Installing and rolling back updates is on the [Game files page](#game-files-page). The sidebar badge takes you there.
 - **Windows graphics preference for skate3.exe:** Let Windows decide, Power saving or High performance. This is the same per-app setting as Windows Settings → System → Display → Graphics, and it's what decides the GPU under Direct3D 12. It applies immediately; it's stored in your user registry, so no admin rights are needed.
+- **Add to Steam:** adds **Skate 3 (Recomp)** to your Steam library as a non-Steam game, so it works in Big Picture and on a Steam Deck. Choose whether it opens the launcher (controller-friendly) or plays straight away. Steam must be closed while the launcher edits its library file (a backup of `shortcuts.vdf` is kept). **Set artwork…** files your own images by shape: tall = library cover, very wide = hero banner, wide = grid, square = logo.
+- **Graphics driver:** your GPU, driver version and date, and the Vulkan driver the game reported. Drivers over a year old are flagged, and **Check driver** also checks a list of known-bad versions kept in this repo (`known-driver-issues.txt`). **Get the latest driver** opens AMD's, NVIDIA's or Intel's driver page.
+- **Controller navigation:** see [Keyboard and controller shortcuts](#keyboard-and-controller-shortcuts). **What's new** shows this version's changes again.
 - **Shader & pipeline cache:** shows the size of the shader cache and of the whole `cache` folder.
   - **Clear shader cache** deletes `cache\nrhi_shaders` and `cache\shaders`.
   - **Clear all cache** deletes everything in `cache`.
@@ -312,8 +386,9 @@ Live controller polling runs only while this page is open.
 1. If `skate3.exe` hasn't been found, the launcher asks you to locate it (once).
 2. Unsaved changes are saved. If the game is somehow already running, you're warned first, because the game rewrites `settings.toml` when it exits.
 3. Your saves are backed up (if **Back up saves before every launch** is on), and old automatic backups are trimmed.
-4. The game starts. If Discord presence is on, it's switched on.
-5. The launcher then does one of these:
+4. If any mods are enabled, the modded game folder is built (or reused if nothing changed). Anything the mod loader wants you to know is shown before the game starts.
+5. The game starts. If Discord presence is on, it's switched on.
+6. The launcher then does one of these:
    - **Keep launcher open** on: stays open, or goes to the tray if **Use system tray** is on. It comes back when the game exits.
    - Keep open off, but tray or Discord presence on: hides in the background (in the tray if that's on) so presence and crash detection keep working, then **closes itself when the game exits**. Restoring it from the tray cancels the auto-close.
    - Otherwise: closes straight away, exactly like the old launcher.
@@ -363,7 +438,7 @@ The **Profiles** and **Launcher** pages create these shortcuts on your desktop f
 
 ---
 
-## Keyboard shortcuts
+## Keyboard and controller shortcuts
 
 | Keys | Action |
 |---|---|
@@ -373,6 +448,20 @@ The **Profiles** and **Launcher** pages create these shortcuts on your desktop f
 | Arrow keys / Home / End / Page Up / Page Down | Adjust the focused slider |
 | Left / Right | Move the quality-preset picker |
 | Space / Enter | Flip the focused toggle or press the focused button |
+
+With an Xbox controller connected (and **Controller navigation** on, the default), the launcher itself can be driven from the couch:
+
+| Button | Action |
+|---|---|
+| D-pad / left stick up and down | Move between controls |
+| D-pad / left stick left and right | Change the focused slider, drop-down, toggle or picker |
+| A | Press the focused button, flip a toggle, open or close a drop-down |
+| B | Close an open drop-down |
+| LB / RB | Previous / next page |
+| Start | PLAY |
+| Back | Save |
+
+Controller navigation pauses on the Controller page so the tester sees every button.
 
 ---
 
@@ -388,12 +477,25 @@ Everything goes in `%APPDATA%\skate3`, the game's own data folder:
 | `launcher-profiles\*.toml` | Your profiles: plain `key = value` files you can share or edit. |
 | `launcher-history\settings-<date>.toml` | Last 15 versions of `settings.toml`. |
 | `launcher-backups\saves-<date>-<auto/manual/pre-restore>.zip` | Save backups. |
+| `launcher-benchmarks.csv` | Benchmark results. |
+| `launcher-game-baseline.txt` | Your own game-file hashes, if you saved a baseline. |
+| `settings.toml.benchmark-backup` | Only exists while a benchmark is running. |
+
+Next to `skate3.exe`:
+
+| Path | What it is |
+|---|---|
+| `mods\<mod name>\` | Installed mods. `mods\modlist.txt` is the load order. |
+| `mods\.active-game\` | The modded game folder (hard links), rebuilt when your mods change. |
+| `recomp-backups\` | The files each recomp update replaced, for rollback (newest 3 kept). |
 
 The launcher also writes:
 - The Windows GPU preference value for `skate3.exe` in `HKEY_CURRENT_USER\Software\Microsoft\DirectX\UserGpuPreferences`, only if you change it.
 - Desktop shortcuts and bug-report zips, only when you click those buttons.
+- Steam's `shortcuts.vdf` and grid artwork, only when you use **Add to Steam**.
+- The Windows crash-dump setting for `skate3.exe` (`HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\skate3.exe`), only when you click **Keep crash dumps** and approve the admin prompt.
 
-It **never** modifies `skate3.exe`, the `game` folder, or anything outside the places listed here.
+It **never** modifies the `game` folder. It only replaces `skate3.exe` and the recomp's other files when you install or roll back an update on the Game files page.
 
 ---
 
@@ -404,6 +506,8 @@ It **never** modifies `skate3.exe`, the `game` folder, or anything outside the p
 | `src/TroopersSkate3Launcher.cs` | Main window, the settings catalog, presets, save/PLAY logic, tray, Discord hand-off, command line. |
 | `src/LauncherPages.cs` | The Advanced, Profiles, Saves & DLC, Controller, Logs and Launcher pages and their controls. |
 | `src/LauncherServices.cs` | Background services: paths and prefs, GPU detection (Vulkan), save backups, log parsing, update check, Discord IPC, shortcuts, system info, XInput/DirectInput. |
+| `src/LauncherPagesV31.cs` | The Game files, Mods and Benchmark pages, the Photo Mode extras, the Steam / driver / crash-report cards, controller navigation and the What's new dialog. |
+| `src/GameServices.cs` | v3.1 background services: mod loader, recomp installer and rollback, game-file checks, benchmark runner, Steam `shortcuts.vdf` writer, driver check, crash dumps. |
 | `src/build.cmd` | Builds the exe with the C# compiler that ships with Windows. |
 
 Double-click **`src\build.cmd`** (or run it from a terminal). It uses `%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe`, so no Visual Studio or .NET SDK is needed, and writes `bin\Trooper's Skate 3 Recomp Launcher.exe`. The code is C# 5 so that built-in compiler accepts it.
@@ -425,10 +529,15 @@ The exe gets the Skate 3 icon only if `src\skate3.ico` exists, or if `skate3.exe
 | The game crashed | **Logs** page: check **Last session**, filter to **Errors**, then **Copy bug report** or **Save bug report (.zip)**. |
 | Lost or broken career | **Saves & DLC → Backups → Restore** (your current saves are backed up first). |
 | Discord presence doesn't show | The Discord *desktop* app must be running, the Application ID must be right, and Discord → Settings → Activity Privacy → "Share your detected activities" must be on. Use **Test connection**. |
+| The game won't boot after an update | **Game files → Roll back.** |
+| "Title Update 3 staged" is marked ⚠ | Start the game once with an internet connection; it downloads and installs the update itself. |
+| A mod doesn't show up in-game | Check it's enabled and lower in the list than any mod that replaces the same file, and that it's an Xbox 360 mod. |
+| "Mods need NTFS" | Move the whole Skate 3 Recomp folder to an NTFS drive (most internal drives are). |
+| The benchmark says the game didn't reach gameplay | Make sure the game boots normally first (Game files page), then try the Spawn point route. |
 | GPU list says "GPU 0 / 1 / 2" | Neither the Vulkan driver nor a game log could be read. Run the game once with Vulkan so its log lists your GPUs. |
 
 ---
 
 ## License
 
-[MIT](LICENSE). Skate 3 is © Electronic Arts; the Skate 3 Recomp is by its own authors. This launcher only edits the recomp's config and data files on your PC.
+[MIT](LICENSE). Skate 3 is © Electronic Arts; the Skate 3 Recomp is by its own authors. This launcher only edits the recomp's config and data files on your PC, and installs recomp releases from GitHub when you ask it to.

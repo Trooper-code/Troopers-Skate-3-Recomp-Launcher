@@ -351,11 +351,17 @@ namespace Skate3Launcher
 
         void BuildToolPages()
         {
+            BuildGameFilesPage();
+            BuildModsPage();
             BuildProfilesPage();
             BuildSavesPage();
+            BuildBenchmarkPage();
             BuildControllerPage();
             BuildLogsPage();
             BuildLauncherPage();
+            AddPhotoModeCards();
+            AddLauncherV31Cards();
+            AddLogsV31Cards();
         }
 
         // ================================================================== Advanced
@@ -1174,6 +1180,7 @@ namespace Skate3Launcher
             var gpus = GpuInfo.Vulkan(dir);
             sb.AppendLine("GPUs: " + (gpus.Count == 0 ? "unknown" : string.Join("; ", gpus.Select(g => g.Label))));
             sb.AppendLine("Monitors: " + string.Join("; ", Screen.AllScreens.Select(s => s.Bounds.Width + "x" + s.Bounds.Height + (s.Primary ? " (primary)" : ""))));
+            AppendV31Report(sb);
             var s0 = LogTools.LastSession(dir);
             if (s0 != null)
                 sb.AppendLine("Last session: " + s0.File.Name + " — " + (s0.Clean ? "ended cleanly" : "did NOT shut down cleanly") + ", " + s0.Errors + " errors, " + s0.Warnings + " warnings");
@@ -1210,6 +1217,7 @@ namespace Skate3Launcher
                     using (var w = new StreamWriter(e.Open(), new UTF8Encoding(false))) w.Write(BuildBugReport());
                     if (File.Exists(configPath)) AddFileToZip(zip, configPath, "settings.toml");
                     foreach (var f in LogTools.Files(Paths.LogsDir(gameExe)).Take(2)) AddFileToZip(zip, f.FullName, "logs/" + f.Name);
+                    AddCrashDumpToZip(zip);
                 }
                 Flash("Saved " + Path.GetFileName(path) + " to your desktop.", Theme.Good);
                 Process.Start("explorer.exe", "/select,\"" + path + "\"");
@@ -1248,10 +1256,10 @@ namespace Skate3Launcher
         void BuildLauncherPage()
         {
             var page = new StackPage();
-            installedVersion = LogTools.InstalledVersion(Paths.LogsDir(gameExe), gameExe);
+            installedVersion = RecompVersion.Current(Paths.LogsDir(gameExe), gameExe);
 
             // ---- updates
-            var upd = new ToolCard("Updates", "Checks GitHub for a newer Skate 3 Recomp release. The launcher never downloads or installs anything itself — it just tells you and opens the release page.");
+            var upd = new ToolCard("Updates", "Checks GitHub for a newer Skate 3 Recomp release. Install updates (and roll back) on the Game files page.");
             updateText = MkLabel("", Theme.Base, Theme.Text);
             var check = MkButton("Check now", "", ButtonStyle.Secondary, null);
             var releases = MkButton("Open releases page", "", ButtonStyle.Ghost, null);
@@ -1378,7 +1386,7 @@ namespace Skate3Launcher
                     if (dlg.ShowDialog(this) != DialogResult.OK) return;
                     gameExe = dlg.FileName;
                     WritePref("game_exe", gameExe);
-                    installedVersion = LogTools.InstalledVersion(Paths.LogsDir(gameExe), gameExe);
+                    installedVersion = RecompVersion.Current(Paths.LogsDir(gameExe), gameExe);
                     RefreshLauncherPage();
                     UpdateStatus();
                 }
@@ -1528,14 +1536,14 @@ namespace Skate3Launcher
                 bool show = newer && LauncherPrefs.Bool("check_updates", true);
                 updateBadge.Text = tag != null ? tag + " available" : "Update available";
                 if (updateBadge.Visible != show) { updateBadge.Visible = show; if (layoutSidebar != null) layoutSidebar(); }
-                tips.SetToolTip(updateBadge, "A newer Skate 3 Recomp release is out. Click to open the release page.");
+                tips.SetToolTip(updateBadge, "A newer Skate 3 Recomp release is out. Click to install it from the Game files page.");
             }
             if (updateText == null) return;
             string installed = installedVersion != null ? "v" + installedVersion.TrimStart('v') : "unknown (run the game once so its log records the version)";
             string text = "Installed: " + installed + "     Latest: " + (tag ?? "not checked yet") +
                 (last > 0 ? "  (checked " + When(new DateTime(last, DateTimeKind.Utc).ToLocalTime()) + ")" : "");
             if (error != null) { text += "\nCouldn't check for updates: " + error; updateText.ForeColor = Theme.Warn; }
-            else if (newer) { text += "\nA newer release is available — open the releases page to download it."; updateText.ForeColor = Theme.Accent; }
+            else if (newer) { text += "\nA newer release is available. Install it from the Game files page."; updateText.ForeColor = Theme.Accent; }
             else updateText.ForeColor = Theme.Text;
             updateText.Text = text;
             if (currentPage != null && !currentPage.IsSettings) currentPage.Page.Relayout();
