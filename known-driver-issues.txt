@@ -1,0 +1,11 @@
+# Known GPU driver problems with Skate 3 Recomp.
+# Trooper's Skate 3 Recomp Launcher (v3.1.0+) downloads this file from the main branch when you press
+# Launcher -> Graphics driver -> Check driver, and warns if your driver matches a line.
+#
+# One problem per line:   vendor | text found in the driver version | what goes wrong
+#   vendor   AMD, NVIDIA or Intel
+#   text     compared against the Windows driver version (e.g. 32.0.21025.10016) and the Vulkan
+#            driver string the game logs (e.g. "26.10.1 (AMD proprietary shader compiler)")
+#
+# Only add confirmed problems, with a link to the report if there is one. Example (not a real issue):
+# AMD | 99.99.1 | Example: black screen on boot with Vulkan. Use Direct3D 12 or update. (link)
