@@ -62,6 +62,16 @@ v3.1.0 adds a **mod loader**, **recomp updates with rollback**, **game-file chec
 
 Suggestions and bug reports are welcome in [Issues](https://github.com/Trooper-code/Troopers-Skate-3-Recomp-Launcher/issues).
 
+## Known issues
+
+These are bugs in the Skate 3 Recomp itself, not in the launcher. They're listed here so you don't lose time on them, and removed once the recomp fixes them.
+
+| Issue | Workaround |
+|---|---|
+| **Shadows swim, jump around or cast in the wrong place on Vulkan** when **Full-resolution SSAO** is on or **Static sun shadow resolution** is changed from 4096. Seen with recomp v2.0.2 on an AMD Radeon RX 6800 XT. | Set **Audio & System → Graphics API** to **Direct3D 12** (fixes it), or keep those two settings at their defaults (Full-resolution SSAO off, Static sun shadow resolution 4096) when using Vulkan. |
+
+Found another one? Use **Logs → Report on GitHub…** and pick "The game (Skate 3 Recomp)".
+
 ## Screenshots
 
 | | |
@@ -559,6 +569,7 @@ The exe gets the Skate 3 icon only if `src\skate3.ico` exists, or if `skate3.exe
 | A mod doesn't show up in-game | Check it's enabled and lower in the list than any mod that replaces the same file, and that it's an Xbox 360 mod. |
 | "Mods need NTFS" | Move the whole Skate 3 Recomp folder to an NTFS drive (most internal drives are). |
 | The benchmark says the game didn't reach gameplay | Make sure the game boots normally first (Game files page), then try the Spawn point route. |
+| Shadows swim or cast in the wrong place | You're on Vulkan with Full-resolution SSAO on or a non-default Static sun shadow resolution. Switch **Graphics API** to **Direct3D 12**. See [Known issues](#known-issues). |
 | GPU list says "GPU 0 / 1 / 2" | Neither the Vulkan driver nor a game log could be read. Run the game once with Vulkan so its log lists your GPUs. |
 
 ---
