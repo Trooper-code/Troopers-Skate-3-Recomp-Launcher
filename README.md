@@ -15,6 +15,19 @@
 
 > **Unofficial.** Not affiliated with the Skate 3 Recomp developers or EA. This repo contains **NO GAME FILES OR RECOMPILATION FILES**: you need **YOUR OWN COPY** of the recomp.
 
+## What's new in v3.1.0
+
+**The biggest update yet.** The launcher now installs, checks, mods and benchmarks the recomp, not just configures it. [Full release notes →](https://github.com/Trooper-code/Troopers-Skate-3-Recomp-Launcher/releases/tag/v3.1.0)
+
+| | |
+|:-:|:-:|
+| ![Mods page](docs/screenshots/14-mods.png)<br>**Mod loader:** install, enable and order mods. Hard links mean zero extra disk space, and your game files are never touched. | ![Game files page](docs/screenshots/13-game-files.png)<br>**Game files:** a setup checklist, one-click recomp updates with rollback, and a full game-file check. |
+| ![Benchmark page](docs/screenshots/15-benchmark.png)<br>**Benchmark:** the game drives itself to the same spot every run, so you can compare presets with real FPS, worst-frame and jitter numbers. | ![Photo Mode page](docs/screenshots/16-photo-mode.png)<br>**Photo Mode:** free-camera speed, rebindable free-camera and screenshot keys, and your screenshots one click away. |
+
+**Also new:** 🎮 controller navigation for the launcher itself · 🚂 Add to Steam for Big Picture and Steam Deck · 🩺 graphics driver check · 🐞 pre-filled GitHub crash reports with optional crash dumps · ✨ a What's new pop-up after each update.
+
+<sub>Screenshots show example mods and benchmark results.</sub>
+
 ## Why use it?
 
 - **No more hand-editing!! `settings.toml`.** Every option on clean pages with plain-English help, quality presets and a live VRAM estimate. Only the keys you change are rewritten.
@@ -152,6 +165,9 @@ Dynamic shadows, Enhanced shadow resolution, Soft shadows (PCSS), Static sun sha
 - **Skippable intro movies** (`skate3_intro_movie_skip`).
 
 ### Photo Mode
+
+![Photo Mode page](docs/screenshots/16-photo-mode.png)
+
 - **Free camera speed** (`skate3_native_render_scene_freecam_speed`, 0.5–100 m/s) and **Free camera look speed** (`skate3_native_render_scene_freecam_look_speed`, 10–360°/s).
 - **Freeze the skater while flying** (`skate3_native_render_scene_freecam_capture_input`).
 - **Free camera key** (`bind_skate3_freecam`, End), **Screenshot key** (`bind_skate3_screenshot`, F6), **Renderer toggle key** (`bind_skate3_native_render_toggle`, F5) and **Settings menu key (alternate)** (`bind_skate3_menu_alt`, F1).
@@ -254,6 +270,9 @@ Warnings never block saving. They're there to tell you a setting won't do what y
 
 ## Game files page
 
+![Game files page](docs/screenshots/13-game-files.png)
+
+
 - **Setup checklist:** whether `skate3.exe` was found, the game files are installed, `default.xex` is the version the recomp is built for, **Title Update 3** is staged (checked against the same SHA-256 hashes the recomp's own installer uses), `EAWebkit.xex` is present, and the drive is NTFS (needed by the mod loader). If the game files aren't installed yet, **Start the game's installer** runs `skate3.exe` so you can pick your ISO. On startup the launcher runs this check quietly and opens this page if something's missing.
 - **Skate 3 Recomp version:** your installed version and the latest release on GitHub.
   - **Install vX.Y.Z** downloads `Skate3Recomp-Windows.zip` and installs it over your current build. Every file it replaces is backed up into `recomp-backups` first, and if anything goes wrong mid-install the old build is put back automatically. Your `game` folder, saves, settings, mods and this launcher are never touched.
@@ -264,6 +283,9 @@ Warnings never block saving. They're there to tell you a setting won't do what y
 ---
 
 ## Mods page
+
+![Mods page](docs/screenshots/14-mods.png)
+
 
 - **Load enabled mods when I press PLAY:** the master switch.
 - **Install from .zip… / Install from folder…** copies a mod into the `mods` folder next to `skate3.exe` and enables it. **Open mods folder** opens it; you can also drop mod folders in by hand (new folders start disabled).
@@ -301,6 +323,9 @@ mods\
 ---
 
 ## Benchmark page
+
+![Benchmark page](docs/screenshots/15-benchmark.png)
+
 
 - **Run a benchmark:** pick a **Route**, the **Settings** to test (your current settings or any saved profile) and a **Length** (2,400 / 6,000 / 12,000 frames), then **Run benchmark**.
   - **Spawn point (stand still)** measures the spot where gameplay starts.
