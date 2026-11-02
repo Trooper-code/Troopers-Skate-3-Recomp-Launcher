@@ -96,7 +96,24 @@ namespace Skate3Launcher
             {
                 MaybeShowWhatsNew();
                 RunFirstRunCheck();
+                System.Threading.ThreadPool.QueueUserWorkItem(delegate { if (KnownIssues.Refresh(false)) Ui(delegate { UpdateStatus(); }); });
             };
+        }
+
+        // Points the launcher at a different skate3.exe. Returns true when the launcher restarts because the game's data folder
+        // changed (portable.txt or a saves folder next to the new exe), since settings.toml is opened once at startup.
+        bool SetGameLocation(string exe)
+        {
+            string before = Paths.UserDir + "|" + Paths.SavesRoot;
+            gameExe = exe;
+            WritePref("game_exe", exe);
+            Paths.Resolve(exe);
+            if (Paths.UserDir + "|" + Paths.SavesRoot == before) return false;
+            DarkDialog.Ask(this, "Restarting the launcher",
+                "The game in that folder keeps its " + (Paths.Portable ? "settings in the game folder (portable mode)" : "settings in " + Paths.UserDir) +
+                " and its saves in " + Paths.SavesRoot + ". The launcher restarts to load them.", "OK");
+            Application.Restart();
+            return true;
         }
 
         void RunFirstRunCheck()
@@ -123,6 +140,15 @@ namespace Skate3Launcher
 
         // ================================================================== What's new
 
+        static readonly string[] WhatsNew311 =
+        {
+            "Portable installs: if portable.txt or a saves folder sits next to skate3.exe, the launcher now edits the same settings.toml and backs up the same saves the game uses.",
+            "Known-issue warnings: settings that trigger known recomp bugs get a ⚠ on their card. First up: on Vulkan, full-resolution SSAO or a static sun shadow resolution other than 4096 breaks shadows (use Direct3D 12). The list updates from GitHub without a new launcher release.",
+            "Status messages (saved, installed, copied…) now stay on screen for a few seconds instead of vanishing.",
+            "Buttons that can't be used right now, like ▲ on the first mod, now look disabled.",
+            "A finished benchmark no longer shows up on the Logs page as a crash."
+        };
+
         static readonly string[] WhatsNew310 =
         {
             "Mod loader: install, enable, order and remove mods on the new Mods page. Your game files are never changed.",
@@ -141,12 +167,17 @@ namespace Skate3Launcher
             bool existingUser = File.Exists(Paths.Prefs) && seen != LauncherVersion;
             LauncherPrefs.Write("last_seen_version", LauncherVersion);
             if (!existingUser || (seen != null && Updates.Compare(LauncherVersion, seen) <= 0)) return;
-            ShowWhatsNew();
+            ShowWhatsNew(seen == null || Updates.Compare("3.1.0", seen) > 0);
         }
 
-        void ShowWhatsNew()
+        void ShowWhatsNew() { ShowWhatsNew(false); }
+
+        // includeV310: also list v3.1.0's changes, for people updating straight from v3.0.
+        void ShowWhatsNew(bool includeV310)
         {
-            DarkDialog.Ask(this, "What's new in v" + LauncherVersion, "•  " + string.Join("\n\n•  ", WhatsNew310), "Got it");
+            string text = "•  " + string.Join("\n\n•  ", WhatsNew311);
+            if (includeV310) text += "\n\nAlso new since v3.0 (from v3.1.0):\n\n•  " + string.Join("\n\n•  ", WhatsNew310);
+            DarkDialog.Ask(this, "What's new in v" + LauncherVersion, text, "Got it");
         }
 
         // ================================================================== Game files
@@ -1126,6 +1157,13 @@ namespace Skate3Launcher
         // Extra conflict warnings for v3.1 settings (called at the end of ComputeWarnings).
         void ComputeV31Warnings(Dictionary<string, string> w)
         {
+            // recomp bugs from known-issues.txt (shown first: they explain broken visuals, the others only explain no-ops)
+            foreach (var r in KnownIssues.Rules)
+            {
+                if (w.ContainsKey(r.Key) || !KnownIssues.Matches(r, k => Val(k), installedVersion)) continue;
+                w[r.Key] = r.Message;
+            }
+
             var used = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var r in ReservedKeys) used[r[0]] = r[1];
             foreach (var k in BindKeys)

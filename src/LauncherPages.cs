@@ -337,8 +337,12 @@ namespace Skate3Launcher
             return t.ToString("d MMM yyyy HH:mm");
         }
 
+        DateTime flashUntil;
+
+        // Shows a message in the status line and keeps it there for a few seconds (the 1.5 s status refresh would otherwise replace it).
         void Flash(string text, Color dot)
         {
+            flashUntil = DateTime.Now.AddSeconds(6);
             statusView.Text = text;
             statusView.ForeColor = Theme.Text;
             statusView.DotColor = dot;
@@ -676,7 +680,8 @@ namespace Skate3Launcher
         {
             var page = new StackPage();
 
-            saveInfoCard = new ToolCard("Save data", "Your career and created skaters live in one folder per gamer profile inside " + Paths.UserDir + ".");
+            saveInfoCard = new ToolCard("Save data", "Your career and created skaters live in one folder per gamer profile inside " + Paths.SavesRoot +
+                (Paths.PortableSaves ? " (the portable saves folder next to skate3.exe)." : "."));
             saveInfoText = MkLabel("", Theme.Base, Theme.Text);
             var backupNow = MkButton("Back up now", "", ButtonStyle.Secondary, null);
             var openSaves = MkButton("Open save folder", "", ButtonStyle.Ghost, null);
@@ -690,7 +695,7 @@ namespace Skate3Launcher
                 catch (Exception ex) { MessageBox.Show(this, "Backup failed:\n\n" + ex.Message, AppName); }
                 RefreshSaves();
             };
-            openSaves.Click += delegate { OpenFolder(Paths.UserDir); };
+            openSaves.Click += delegate { OpenFolder(Paths.SavesRoot); };
             saveInfoCard.Controls.AddRange(new Control[] { saveInfoText, backupNow, openSaves });
             saveInfoCard.Body = (w, top) =>
             {
@@ -1126,10 +1131,11 @@ namespace Skate3Launcher
             {
                 bool running = IsGameRunning();
                 string state = running ? "Skate 3 is running right now." :
-                    s.Clean ? "Last session ended cleanly." : "Last session didn't shut down cleanly — the log stops without the usual shutdown lines, which usually means a crash or a forced close.";
+                    s.Clean ? "Last session ended cleanly." :
+                    Benchmarks.IsBenchmarkLog(s.File) ? "Last session was a benchmark run: the launcher closed the game itself when it finished." : "Last session didn't shut down cleanly — the log stops without the usual shutdown lines, which usually means a crash or a forced close.";
                 sessionText.Text = state + "\n" + s.File.Name + "  ·  " + When(s.File.LastWriteTime) +
                     (s.Version != null ? "  ·  game v" + s.Version : "") + "  ·  " + s.Errors + " error" + (s.Errors == 1 ? "" : "s") + ", " + s.Warnings + " warning" + (s.Warnings == 1 ? "" : "s");
-                sessionText.ForeColor = running || s.Clean ? Theme.Text : Theme.Warn;
+                sessionText.ForeColor = running || s.Clean || Benchmarks.IsBenchmarkLog(s.File) ? Theme.Text : Theme.Warn;
             }
             long total = logFileList.Sum(f => f.Length);
             logsSizeText.Text = logFileList.Count + " log file" + (logFileList.Count == 1 ? "" : "s") + " using " + Paths.Size(total) + ".";
@@ -1183,7 +1189,7 @@ namespace Skate3Launcher
             AppendV31Report(sb);
             var s0 = LogTools.LastSession(dir);
             if (s0 != null)
-                sb.AppendLine("Last session: " + s0.File.Name + " — " + (s0.Clean ? "ended cleanly" : "did NOT shut down cleanly") + ", " + s0.Errors + " errors, " + s0.Warnings + " warnings");
+                sb.AppendLine("Last session: " + s0.File.Name + " — " + (s0.Clean ? "ended cleanly" : Benchmarks.IsBenchmarkLog(s0.File) ? "benchmark run (closed by the launcher)" : "did NOT shut down cleanly") + ", " + s0.Errors + " errors, " + s0.Warnings + " warnings");
             sb.AppendLine();
             sb.AppendLine("---- settings.toml ----");
             try { sb.AppendLine(File.Exists(configPath) ? File.ReadAllText(configPath).Trim() : "(missing)"); } catch (Exception ex) { sb.AppendLine("(unreadable: " + ex.Message + ")"); }
@@ -1384,8 +1390,7 @@ namespace Skate3Launcher
                 using (var dlg = new OpenFileDialog { Title = "Locate skate3.exe", Filter = "skate3.exe|skate3.exe|Programs|*.exe" })
                 {
                     if (dlg.ShowDialog(this) != DialogResult.OK) return;
-                    gameExe = dlg.FileName;
-                    WritePref("game_exe", gameExe);
+                    if (SetGameLocation(dlg.FileName)) return;
                     installedVersion = RecompVersion.Current(Paths.LogsDir(gameExe), gameExe);
                     RefreshLauncherPage();
                     UpdateStatus();
@@ -1416,7 +1421,8 @@ namespace Skate3Launcher
             long shaders = Paths.DirSize(Path.Combine(Paths.Cache, "nrhi_shaders")) + Paths.DirSize(Path.Combine(Paths.Cache, "shaders"));
             long all = Paths.DirSize(Paths.Cache);
             cacheText.Text = "Shader cache: " + Paths.Size(shaders) + "   ·   whole cache folder: " + Paths.Size(all);
-            gamePathText.Text = "Game: " + (gameExe ?? "skate3.exe not found") + "\nSettings, saves, profiles and backups: " + Paths.UserDir +
+            gamePathText.Text = "Game: " + (gameExe ?? "skate3.exe not found") + "\nSettings, profiles and backups: " + Paths.UserDir + (Paths.Portable ? "  (portable mode: portable.txt is next to skate3.exe)" : "") +
+                "\nSaves: " + Paths.SavesRoot + (Paths.PortableSaves ? "  (portable saves folder)" : "") +
                 "\nLauncher v" + LauncherVersion + (installedVersion != null ? "   ·   Skate 3 Recomp v" + installedVersion.TrimStart('v') : "");
             if (gameExe != null)
             {

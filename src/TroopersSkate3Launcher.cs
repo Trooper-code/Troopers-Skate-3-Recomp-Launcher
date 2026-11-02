@@ -18,8 +18,8 @@ using System.Windows.Forms;
 
 [assembly: System.Reflection.AssemblyTitle("Trooper's Skate 3 Recomp Launcher")]
 [assembly: System.Reflection.AssemblyProduct("Trooper's Skate 3 Recomp Launcher")]
-[assembly: System.Reflection.AssemblyVersion("3.1.0.0")]
-[assembly: System.Reflection.AssemblyFileVersion("3.1.0.0")]
+[assembly: System.Reflection.AssemblyVersion("3.1.1.0")]
+[assembly: System.Reflection.AssemblyFileVersion("3.1.1.0")]
 
 namespace Skate3Launcher
 {
@@ -775,8 +775,8 @@ namespace Skate3Launcher
             }
             else
             {
-                if (hover || down) Gfx.FillRound(g, down ? Theme.NavSel : Theme.NavHover, r, rad);
-                fg = hover ? Theme.Text : Theme.Muted;
+                if (Enabled && (hover || down)) Gfx.FillRound(g, down ? Theme.NavSel : Theme.NavHover, r, rad);
+                fg = !Enabled ? Gfx.Mix(Theme.Subtle, Theme.Bg, 0.45f) : hover ? Theme.Text : Theme.Muted;
             }
 
             if (Focused && ShowFocusCues)
@@ -789,7 +789,7 @@ namespace Skate3Launcher
             int gap = gs.Width > 0 && ts.Width > 0 ? Dpi.S(Style == ButtonStyle.Primary ? 10 : 8) : 0;
             int x = LeftAlign ? Dpi.S(12) : (Width - (gs.Width + gap + ts.Width)) / 2;
             if (gs.Width > 0)
-                TextRenderer.DrawText(g, Glyph, GlyphFont, new Point(x, (Height - gs.Height) / 2), Style == ButtonStyle.Ghost && !hover ? Theme.Subtle : fg, Gfx.Flat);
+                TextRenderer.DrawText(g, Glyph, GlyphFont, new Point(x, (Height - gs.Height) / 2), Style == ButtonStyle.Ghost && !hover && Enabled ? Theme.Subtle : fg, Gfx.Flat);
             if (ts.Width > 0)
                 TextRenderer.DrawText(g, label, font, new Point(x + gs.Width + gap, (Height - ts.Height) / 2), fg, Gfx.Flat);
         }
@@ -984,7 +984,7 @@ namespace Skate3Launcher
     partial class MainForm : Form
     {
         public const string AppName = "Trooper's Skate 3 Recomp Launcher";
-        public const string LauncherVersion = "3.1.0";
+        public const string LauncherVersion = "3.1.1";
         readonly string userDir;
         readonly string configPath;
         string gameExe;
@@ -1021,10 +1021,11 @@ namespace Skate3Launcher
         public MainForm(string profileToApply)
         {
             startupProfile = profileToApply;
+            gameExe = FindGameExe();
+            Paths.Resolve(gameExe);   // portable.txt / saves folder next to skate3.exe move the user data
             userDir = Paths.UserDir;
             configPath = Paths.Config;
             config = new ConfigFile(configPath);
-            gameExe = FindGameExe();
             categories = BuildSettings(Paths.LogsDir(gameExe));
 
             Text = AppName;
@@ -1814,6 +1815,7 @@ namespace Skate3Launcher
         void OnEdited()
         {
             if (loading) return;
+            flashUntil = DateTime.MinValue;   // a new edit replaces any message that was showing
             UpdateStatus();
         }
 
@@ -1880,6 +1882,7 @@ namespace Skate3Launcher
                 text = "skate3.exe not found next to the launcher — PLAY will ask for it.";
                 dot = Theme.Warn;
             }
+            if (!running && DateTime.Now < flashUntil) { Text = AppName + (n > 0 ? " *" : ""); return; }   // keep a recent message on screen
             if (!running && warnCount > 0) text += "  " + warnCount + " setting" + (warnCount == 1 ? " has a" : "s have") + " warning" + (warnCount == 1 ? "" : "s") + " (marked ⚠).";
             statusView.Text = text;
             statusView.ForeColor = color;
@@ -2068,12 +2071,7 @@ namespace Skate3Launcher
                 return false;
             }
             ReloadFromFile();
-            if (showConfirmation)
-            {
-                statusView.Text = "Saved " + changes.Count + " setting" + (changes.Count == 1 ? "" : "s") + " to settings.toml.";
-                statusView.ForeColor = Theme.Text;
-                statusView.DotColor = Theme.Good;
-            }
+            if (showConfirmation) Flash("Saved " + changes.Count + " setting" + (changes.Count == 1 ? "" : "s") + " to settings.toml.", Theme.Good);
             RefreshToolPages();
             return true;
         }
@@ -2138,8 +2136,7 @@ namespace Skate3Launcher
                 using (var dlg = new OpenFileDialog { Title = "Locate skate3.exe", Filter = "skate3.exe|skate3.exe|Programs|*.exe" })
                 {
                     if (dlg.ShowDialog(this) != DialogResult.OK) return;
-                    gameExe = dlg.FileName;
-                    WritePref("game_exe", gameExe);
+                    if (SetGameLocation(dlg.FileName)) return;
                 }
             }
             if (profileName != null && !LoadProfileByName(profileName, false)) return;
@@ -2405,6 +2402,7 @@ namespace Skate3Launcher
                 else if (a == "--help" || a == "-h" || a == "/?" || a == "-?") help = true;
             }
             if (help) { MessageBox.Show(Usage, MainForm.AppName); return 0; }
+            Paths.Resolve(Paths.FindGameExe());
             if (play) return QuickPlay(profile);
             Application.Run(new MainForm(profile));
             return 0;
