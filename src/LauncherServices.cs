@@ -24,14 +24,37 @@ namespace Skate3Launcher
 
     static class Paths
     {
-        public static readonly string UserDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "skate3");
-        public static readonly string Config = Path.Combine(UserDir, "settings.toml");
-        public static readonly string Prefs = Path.Combine(UserDir, "launcher.ini");
-        public static readonly string Profiles = Path.Combine(UserDir, "launcher-profiles");
-        public static readonly string History = Path.Combine(UserDir, "launcher-history");
-        public static readonly string SaveBackups = Path.Combine(UserDir, "launcher-backups");
-        public static readonly string Cache = Path.Combine(UserDir, "cache");
-        public static readonly string Dlc = Path.Combine(UserDir, "dlc");
+        // %APPDATA%\skate3: the recomp's default user-data folder. launcher.ini always lives here so the launcher can find the game.
+        public static readonly string DefaultUserDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "skate3");
+        public static readonly string Prefs = Path.Combine(DefaultUserDir, "launcher.ini");
+
+        static string userDir = DefaultUserDir, savesRoot = DefaultUserDir;
+        static bool portable, portableSaves;
+
+        // Where the game keeps settings.toml, cache and DLC. Same rule as the recomp (skate3_app_common.cpp ResolveSkate3UserRoot):
+        // a portable.txt next to skate3.exe moves all user data into the game folder.
+        public static string UserDir { get { return userDir; } }
+        // Where save folders (one per gamer profile) live: a "saves" folder next to skate3.exe takes over when it exists.
+        public static string SavesRoot { get { return savesRoot; } }
+        public static bool Portable { get { return portable; } }
+        public static bool PortableSaves { get { return portableSaves; } }
+
+        public static string Config { get { return Path.Combine(UserDir, "settings.toml"); } }
+        public static string Profiles { get { return Path.Combine(UserDir, "launcher-profiles"); } }
+        public static string History { get { return Path.Combine(UserDir, "launcher-history"); } }
+        public static string SaveBackups { get { return Path.Combine(UserDir, "launcher-backups"); } }
+        public static string Cache { get { return Path.Combine(UserDir, "cache"); } }
+        public static string Dlc { get { return Path.Combine(UserDir, "dlc"); } }
+
+        // Call whenever the game location is known or changes.
+        public static void Resolve(string gameExe)
+        {
+            string dir = gameExe != null ? Path.GetDirectoryName(gameExe) : null;
+            portable = dir != null && File.Exists(Path.Combine(dir, "portable.txt"));
+            userDir = portable ? dir : DefaultUserDir;
+            portableSaves = dir != null && Directory.Exists(Path.Combine(dir, "saves"));
+            savesRoot = portableSaves ? Path.Combine(dir, "saves") : userDir;
+        }
 
         public static string LogsDir(string gameExe)
         {
@@ -103,7 +126,7 @@ namespace Skate3Launcher
                 var lines = File.Exists(Paths.Prefs) ? File.ReadAllLines(Paths.Prefs).ToList() : new List<string>();
                 lines.RemoveAll(l => l.StartsWith(key + "="));
                 lines.Add(key + "=" + value);
-                Directory.CreateDirectory(Paths.UserDir);
+                Directory.CreateDirectory(Paths.DefaultUserDir);
                 File.WriteAllLines(Paths.Prefs, lines);
             }
             catch { }
@@ -371,13 +394,16 @@ namespace Skate3Launcher
     {
         static readonly Regex ProfileRx = new Regex("^[0-9A-Fa-f]{16}$");
 
-        // Game profile folders (one per gamer profile, e.g. B13E07DFF9AB6772) inside %APPDATA%\skate3.
+        const string LayoutEntry = "launcher-saves-layout.txt";
+
+        // Game profile folders (one per gamer profile, e.g. B13E07DFF9AB6772) inside the saves root
+        // (%APPDATA%\skate3 normally, or the portable "saves" folder next to skate3.exe).
         public static List<DirectoryInfo> ProfileDirs()
         {
             try
             {
-                if (!Directory.Exists(Paths.UserDir)) return new List<DirectoryInfo>();
-                return new DirectoryInfo(Paths.UserDir).GetDirectories().Where(d => ProfileRx.IsMatch(d.Name)).ToList();
+                if (!Directory.Exists(Paths.SavesRoot)) return new List<DirectoryInfo>();
+                return new DirectoryInfo(Paths.SavesRoot).GetDirectories().Where(d => ProfileRx.IsMatch(d.Name)).ToList();
             }
             catch { return new List<DirectoryInfo>(); }
         }
@@ -403,10 +429,12 @@ namespace Skate3Launcher
             using (var fs = new FileStream(tmp, FileMode.Create))
             using (var zip = new ZipArchive(fs, ZipArchiveMode.Create))
             {
+                // the portable saves folder uses a different layout, so remember which one this backup came from
+                using (var w = new StreamWriter(zip.CreateEntry(LayoutEntry).Open())) w.Write(Paths.PortableSaves ? "portable" : "default");
                 foreach (var d in dirs)
                     foreach (var f in d.GetFiles("*", SearchOption.AllDirectories))
                     {
-                        string rel = f.FullName.Substring(Paths.UserDir.Length).TrimStart('\\', '/').Replace('\\', '/');
+                        string rel = f.FullName.Substring(Paths.SavesRoot.TrimEnd('\\', '/').Length).TrimStart('\\', '/').Replace('\\', '/');
                         var entry = zip.CreateEntry(rel, CompressionLevel.Optimal);
                         entry.LastWriteTime = f.LastWriteTime;
                         using (var src = new FileStream(f.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
@@ -425,11 +453,30 @@ namespace Skate3Launcher
         }
 
         // Restores a backup zip. Always makes a "pre-restore" backup of the current saves first.
+        // "portable" or "default" (backups made before v3.1.1 have no marker and are always "default").
+        public static string Layout(string zipPath)
+        {
+            try
+            {
+                using (var zip = ZipFile_Open(zipPath))
+                {
+                    var e = zip.GetEntry(LayoutEntry);
+                    if (e == null) return "default";
+                    using (var r = new StreamReader(e.Open())) return r.ReadToEnd().Trim();
+                }
+            }
+            catch { return "default"; }
+        }
+
         public static void Restore(string zipPath)
         {
+            string layout = Layout(zipPath), now = Paths.PortableSaves ? "portable" : "default";
+            if (layout != now)
+                throw new InvalidOperationException("This backup was made from " + (layout == "portable" ? "the portable saves folder next to skate3.exe" : "the normal save folder") +
+                    ", but the game now uses " + (now == "portable" ? "the portable saves folder" : "the normal save folder") + ". The two are laid out differently, so it can't be restored here.");
             Backup("pre-restore");
             char sep = Path.DirectorySeparatorChar;
-            string root = Path.GetFullPath(Paths.UserDir).TrimEnd(sep) + sep;
+            string root = Path.GetFullPath(Paths.SavesRoot).TrimEnd(sep) + sep;
             using (var zip = ZipFile_Open(zipPath))
             {
                 var tops = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -441,13 +488,13 @@ namespace Skate3Launcher
                 }
                 foreach (var t in tops)
                 {
-                    string d = Path.Combine(Paths.UserDir, t);
+                    string d = Path.Combine(Paths.SavesRoot, t);
                     if (Directory.Exists(d)) Directory.Delete(d, true);
                 }
                 foreach (var e in zip.Entries)
                 {
                     if (string.IsNullOrEmpty(e.Name)) continue;   // directory entry
-                    string dest = Path.GetFullPath(Path.Combine(Paths.UserDir, e.FullName.Replace('/', sep)));
+                    string dest = Path.GetFullPath(Path.Combine(Paths.SavesRoot, e.FullName.Replace('/', sep)));
                     if (!dest.StartsWith(root, StringComparison.OrdinalIgnoreCase)) continue;   // never write outside the save folder
                     int slash = e.FullName.IndexOf('/');
                     if (slash <= 0 || !ProfileRx.IsMatch(e.FullName.Substring(0, slash))) continue;

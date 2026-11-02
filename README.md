@@ -15,6 +15,8 @@
 
 > **Unofficial.** Not affiliated with the Skate 3 Recomp developers or EA. This repo contains **NO GAME FILES OR RECOMPILATION FILES**: you need **YOUR OWN COPY** of the recomp.
 
+> **v3.1.1** (patch): portable installs (`portable.txt` / `saves` folder) are now supported, settings that trigger known recomp bugs get a ⚠ warning, status messages stay on screen, disabled buttons look disabled, and benchmark runs no longer show up as crashes. [Release notes →](https://github.com/Trooper-code/Troopers-Skate-3-Recomp-Launcher/releases/tag/v3.1.1)
+
 ## What's new in v3.1.0
 
 **The biggest update yet.** The launcher now installs, checks, mods and benchmarks the recomp, not just configures it. [Full release notes →](https://github.com/Trooper-code/Troopers-Skate-3-Recomp-Launcher/releases/tag/v3.1.0)
@@ -66,6 +68,8 @@ Suggestions and bug reports are welcome in [Issues](https://github.com/Trooper-c
 
 These are bugs in the Skate 3 Recomp itself, not in the launcher. They're listed here so you don't lose time on them, and removed once the recomp fixes them.
 
+Since v3.1.1 the launcher also **warns you on the setting's card** (⚠) when your settings would trigger one of these. The rules live in [`known-issues.txt`](known-issues.txt) in this repo, and the launcher downloads the latest list at most every 12 hours, so new warnings don't need a launcher update.
+
 | Issue | Workaround |
 |---|---|
 | **Shadows swim, jump around or cast in the wrong place on Vulkan** when **Full-resolution SSAO** is on or **Static sun shadow resolution** is changed from 4096. Seen with recomp v2.0.2 on an AMD Radeon RX 6800 XT. | Set **Audio & System → Graphics API** to **Direct3D 12** (fixes it), or keep those two settings at their defaults (Full-resolution SSAO off, Static sun shadow resolution 4096) when using Vulkan. |
@@ -110,9 +114,10 @@ Found another one? Use **Logs → Report on GitHub…** and pick "The game (Skat
 18. [Discord Rich Presence](#discord-rich-presence)
 19. [Command line and shortcuts](#command-line-and-shortcuts)
 20. [Keyboard and controller shortcuts](#keyboard-and-controller-shortcuts)
-21. [Files the launcher creates](#files-the-launcher-creates)
-22. [Building from source](#building-from-source)
-23. [Troubleshooting](#troubleshooting)
+21. [Portable installs](#portable-installs)
+22. [Files the launcher creates](#files-the-launcher-creates)
+23. [Building from source](#building-from-source)
+24. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -500,15 +505,27 @@ Controller navigation pauses on the Controller page so the tester sees every but
 
 ---
 
+## Portable installs
+
+The recomp has two ways to keep its data next to `skate3.exe` instead of in `%APPDATA%\skate3`, and the launcher (v3.1.1+) follows both:
+
+- **`portable.txt`** next to `skate3.exe`: `settings.toml`, the cache and DLC live in the game folder. The launcher edits that `settings.toml` and keeps its profiles, history, backups and benchmark results there too.
+- **A `saves` folder** next to `skate3.exe`: your career saves live in `saves\<profile id>\`. Save backups and restores use that folder.
+
+The Launcher page (**Game location & reset**) shows which folders are in use. Save backups remember which layout they came from, because the two are stored differently: a backup made from the normal save folder can't be restored into the portable `saves` folder, and vice versa. If you change the game location to a folder with a different setup, the launcher restarts to load it.
+
+---
+
 ## Files the launcher creates
 
-Everything goes in `%APPDATA%\skate3`, the game's own data folder:
+Everything goes in the game's own user-data folder: `%APPDATA%\skate3` normally, or the game folder itself in [portable mode](#portable-installs). `launcher.ini` and the downloaded known-issues list always stay in `%APPDATA%\skate3`, so the launcher can find the game.
 
 | Path | What it is |
 |---|---|
 | `settings.toml` | The game's config; edited in place, and only the keys you change. |
 | `settings.toml.launcher-backup` | One-time copy of your config from before the launcher first changed it. |
-| `launcher.ini` | Launcher-only options (keep open, tray, game path, backup count, update and Discord settings). |
+| `launcher.ini` | Launcher-only options (keep open, tray, game path, backup count, update and Discord settings). Always in `%APPDATA%\skate3`. |
+| `launcher-known-issues.txt` | Cached copy of the known-issues list. Always in `%APPDATA%\skate3`. |
 | `launcher-profiles\*.toml` | Your profiles: plain `key = value` files you can share or edit. |
 | `launcher-history\settings-<date>.toml` | Last 15 versions of `settings.toml`. |
 | `launcher-backups\saves-<date>-<auto/manual/pre-restore>.zip` | Save backups. |
@@ -568,6 +585,7 @@ The exe gets the Skate 3 icon only if `src\skate3.ico` exists, or if `skate3.exe
 | "Title Update 3 staged" is marked ⚠ | Start the game once with an internet connection; it downloads and installs the update itself. |
 | A mod doesn't show up in-game | Check it's enabled and lower in the list than any mod that replaces the same file, and that it's an Xbox 360 mod. |
 | "Mods need NTFS" | Move the whole Skate 3 Recomp folder to an NTFS drive (most internal drives are). |
+| The launcher edits settings the game ignores | You're probably using a portable install with launcher v3.1.0 or older. Update to v3.1.1, which follows `portable.txt` and the `saves` folder. |
 | The benchmark says the game didn't reach gameplay | Make sure the game boots normally first (Game files page), then try the Spawn point route. |
 | Shadows swim or cast in the wrong place | You're on Vulkan with Full-resolution SSAO on or a non-default Static sun shadow resolution. Switch **Graphics API** to **Direct3D 12**. See [Known issues](#known-issues). |
 | GPU list says "GPU 0 / 1 / 2" | Neither the Vulkan driver nor a game log could be read. Run the game once with Vulkan so its log lists your GPUs. |

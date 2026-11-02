@@ -1189,6 +1189,7 @@ namespace Skate3Launcher
             string logsDir = Paths.LogsDir(gameExe);
             BackupConfig();
             Process p = null;
+            DateTime started = DateTime.Now;
             try
             {
                 var cfg = new ConfigFile(Paths.Config);
@@ -1202,7 +1203,7 @@ namespace Skate3Launcher
                 bench["skate3_native_render_scene_perf_log"] = "true";    // fallback source: guest fps from the native renderer
                 cfg.Save(bench);
 
-                DateTime started = DateTime.Now;
+                started = DateTime.Now;
                 status("Starting Skate 3…");
                 p = GameLaunch.Start(gameExe, GameLaunch.Prepare(gameExe));
                 if (p == null) throw new InvalidOperationException("The game didn't start.");
@@ -1278,11 +1279,30 @@ namespace Skate3Launcher
             {
                 status("Closing the game and restoring your settings…");
                 StopGame(p);
+                MarkBenchmarkLog(logsDir, started);
                 try { RestoreConfig(); } catch { }
             }
         }
 
         static double D(Match m, int g) { return double.Parse(m.Groups[g].Value, CultureInfo.InvariantCulture); }
+
+        // Remembers which log the benchmark session wrote, so the Logs page doesn't report the launcher closing the game as a crash.
+        static void MarkBenchmarkLog(string logsDir, DateTime started)
+        {
+            try
+            {
+                var f = LogTools.Files(logsDir).FirstOrDefault(x => x.LastWriteTime >= started.AddSeconds(-2));
+                if (f != null) LauncherPrefs.Write("bench_log", f.Name + "|" + f.LastWriteTimeUtc.Ticks.ToString(CultureInfo.InvariantCulture));
+            }
+            catch { }
+        }
+
+        public static bool IsBenchmarkLog(FileInfo f)
+        {
+            if (f == null) return false;
+            string v = LauncherPrefs.Read("bench_log");
+            return v != null && v == f.Name + "|" + f.LastWriteTimeUtc.Ticks.ToString(CultureInfo.InvariantCulture);
+        }
 
         static string SafeExit(Process p) { try { return "0x" + p.ExitCode.ToString("X8"); } catch { return "?"; } }
 
@@ -1665,6 +1685,117 @@ namespace Skate3Launcher
                 return new DirectoryInfo(DumpDir).GetFiles("skate3*.dmp").OrderByDescending(f => f.LastWriteTimeUtc).ToList();
             }
             catch { return new List<FileInfo>(); }
+        }
+    }
+}
+
+namespace Skate3Launcher
+{
+    // ====================================================================== known issues (recomp bugs the launcher warns about)
+
+    class KnownIssue
+    {
+        public string Key, Message;
+        public List<string[]> Conditions = new List<string[]>();   // { key, op, value } with op "=", "!=", "<=", ">="
+    }
+
+    // Rules live in known-issues.txt in the launcher's repo so new recomp bugs can be flagged without a launcher release.
+    // A copy ships inside the exe for offline use; the downloaded list is cached and refreshed at most every 12 hours.
+    static class KnownIssues
+    {
+        public const string Url = "https://raw.githubusercontent.com/Trooper-code/Troopers-Skate-3-Recomp-Launcher/main/known-issues.txt";
+        static string CachePath { get { return Path.Combine(Paths.DefaultUserDir, "launcher-known-issues.txt"); } }
+
+        const string BuiltIn =
+            "skate3_native_render_scene_ssao_full_res | gpu_backend='vulkan'; skate3_native_render_scene_ssao_full_res=true | Known recomp bug (seen on v2.0.2): on Vulkan, full-resolution SSAO makes shadows swim and cast in the wrong place. Set Graphics API to Direct3D 12 on Audio & System, or turn this off.\n" +
+            "skate3_native_render_scene_shadow_static_size | gpu_backend='vulkan'; skate3_native_render_scene_shadow_static_casters=true; skate3_native_render_scene_shadow_static_size!=4096 | Known recomp bug (seen on v2.0.2): on Vulkan, any size other than 4096 makes shadows swim and cast in the wrong place. Set Graphics API to Direct3D 12 on Audio & System, or keep 4096.\n" +
+            "gpu_backend | gpu_backend='vulkan'; skate3_native_render_scene_ssao_full_res=true | Known recomp bug: Vulkan with full-resolution SSAO breaks shadows. Direct3D 12 doesn't have this problem.\n" +
+            "gpu_backend | gpu_backend='vulkan'; skate3_native_render_scene_shadow_static_casters=true; skate3_native_render_scene_shadow_static_size!=4096 | Known recomp bug: Vulkan with a static sun shadow resolution other than 4096 breaks shadows. Direct3D 12 doesn't have this problem.\n";
+
+        static List<KnownIssue> rules;
+
+        public static List<KnownIssue> Rules
+        {
+            get
+            {
+                if (rules != null) return rules;
+                string text = null;
+                try { if (File.Exists(CachePath)) text = File.ReadAllText(CachePath); } catch { }
+                rules = Parse(text ?? BuiltIn);
+                if (rules.Count == 0) rules = Parse(BuiltIn);
+                return rules;
+            }
+        }
+
+        public static List<KnownIssue> Parse(string text)
+        {
+            var list = new List<KnownIssue>();
+            foreach (var raw in (text ?? "").Split('\n'))
+            {
+                string l = raw.Trim();
+                if (l.Length == 0 || l.StartsWith("#")) continue;
+                var p = l.Split(new[] { '|' }, 3);
+                if (p.Length < 3) continue;
+                var r = new KnownIssue { Key = p[0].Trim(), Message = p[2].Trim() };
+                bool ok = r.Key.Length > 0;
+                foreach (var c in p[1].Split(';'))
+                {
+                    string t = c.Trim();
+                    if (t.Length == 0) continue;
+                    var m = Regex.Match(t, @"^([A-Za-z0-9_]+)\s*(!=|<=|>=|=)\s*(.+)$");
+                    if (!m.Success) { ok = false; break; }
+                    r.Conditions.Add(new[] { m.Groups[1].Value, m.Groups[2].Value, m.Groups[3].Value.Trim() });
+                }
+                if (ok) list.Add(r);
+            }
+            return list;
+        }
+
+        // value(key) = the current TOML literal for a setting (null if unknown). "recomp" compares against the installed recomp version.
+        public static bool Matches(KnownIssue r, Func<string, string> value, string recompVersion)
+        {
+            foreach (var c in r.Conditions)
+            {
+                if (c[0] == "recomp")
+                {
+                    if (recompVersion == null) return false;
+                    int cmp = Updates.Compare(recompVersion, c[2]);
+                    bool pass = c[1] == "=" ? cmp == 0 : c[1] == "!=" ? cmp != 0 : c[1] == "<=" ? cmp <= 0 : cmp >= 0;
+                    if (!pass) return false;
+                    continue;
+                }
+                string v = value(c[0]);
+                if (v == null) return false;
+                if (c[1] == "=" || c[1] == "!=")
+                {
+                    bool eq = Toml.Norm(v) == Toml.Norm(c[2]);
+                    if (eq != (c[1] == "=")) return false;
+                }
+                else
+                {
+                    double a = Toml.Num(v, double.NaN), b = Toml.Num(c[2], double.NaN);
+                    if (double.IsNaN(a) || double.IsNaN(b) || (c[1] == "<=" ? a > b : a < b)) return false;
+                }
+            }
+            return true;
+        }
+
+        // Downloads the current list (at most every 12 hours unless forced). Returns true when the rules changed.
+        public static bool Refresh(bool force)
+        {
+            try
+            {
+                if (!force && File.Exists(CachePath) && DateTime.UtcNow - File.GetLastWriteTimeUtc(CachePath) < TimeSpan.FromHours(12)) return false;
+                string text = Http.GetString(Url, null);
+                var parsed = Parse(text);
+                if (parsed.Count == 0 && text.IndexOf('|') >= 0) return false;   // don't replace good rules with a broken download
+                Directory.CreateDirectory(Paths.DefaultUserDir);
+                string old = File.Exists(CachePath) ? File.ReadAllText(CachePath) : null;
+                File.WriteAllText(CachePath, text);
+                rules = parsed;
+                return old != text;
+            }
+            catch { return false; }
         }
     }
 }

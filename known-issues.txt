@@ -1,0 +1,19 @@
+# Known Skate 3 Recomp bugs that Trooper's Skate 3 Recomp Launcher (v3.1.1+) warns about.
+# The launcher downloads this file from the main branch (at most every 12 hours) and puts a warning on the
+# setting's card whenever all of a rule's conditions match. Edit it here to add or retire warnings without
+# a launcher release. A copy is built into the launcher for offline use.
+#
+# One rule per line:   setting_key | conditions | message
+#   setting_key  the cvar whose card shows the warning
+#   conditions   separated by ';'. Each is  key=value  key!=value  key<=number  key>=number
+#                values are TOML literals as in settings.toml ('vulkan', true, 4096)
+#                recomp<=2.0.2 / recomp>=2.0.3 compare against the installed recomp version
+#   message      what goes wrong and the workaround
+#
+# Remove a rule once the recomp fixes the bug (or add  recomp<=<last broken version>  to it).
+
+# Vulkan shadow bug: full-res SSAO or a non-default static sun shadow size makes shadows swim and miscast (seen on v2.0.2, fine on D3D12).
+skate3_native_render_scene_ssao_full_res | gpu_backend='vulkan'; skate3_native_render_scene_ssao_full_res=true | Known recomp bug (seen on v2.0.2): on Vulkan, full-resolution SSAO makes shadows swim and cast in the wrong place. Set Graphics API to Direct3D 12 on Audio & System, or turn this off.
+skate3_native_render_scene_shadow_static_size | gpu_backend='vulkan'; skate3_native_render_scene_shadow_static_casters=true; skate3_native_render_scene_shadow_static_size!=4096 | Known recomp bug (seen on v2.0.2): on Vulkan, any size other than 4096 makes shadows swim and cast in the wrong place. Set Graphics API to Direct3D 12 on Audio & System, or keep 4096.
+gpu_backend | gpu_backend='vulkan'; skate3_native_render_scene_ssao_full_res=true | Known recomp bug: Vulkan with full-resolution SSAO breaks shadows. Direct3D 12 doesn't have this problem.
+gpu_backend | gpu_backend='vulkan'; skate3_native_render_scene_shadow_static_casters=true; skate3_native_render_scene_shadow_static_size!=4096 | Known recomp bug: Vulkan with a static sun shadow resolution other than 4096 breaks shadows. Direct3D 12 doesn't have this problem.
