@@ -15,7 +15,15 @@
 
 > **Unofficial.** Not affiliated with the Skate 3 Recomp developers or EA. This repo contains **NO GAME FILES OR RECOMPILATION FILES**: you need **YOUR OWN COPY** of the recomp.
 
-> **v3.1.1** (patch): portable installs (`portable.txt` / `saves` folder) are now supported, settings that trigger known recomp bugs get a ⚠ warning, status messages stay on screen, disabled buttons look disabled, and benchmark runs no longer show up as crashes. [Release notes →](https://github.com/Trooper-code/Troopers-Skate-3-Recomp-Launcher/releases/tag/v3.1.1)
+## What's new in v3.1.1
+
+A patch release from play-testing v3.1.0. [Release notes →](https://github.com/Trooper-code/Troopers-Skate-3-Recomp-Launcher/releases/tag/v3.1.1)
+
+![A known recomp bug flagged on its settings](docs/screenshots/17-known-issue-warning.png)
+
+- **⚠ Known-issue warnings:** settings that trigger a known Skate 3 Recomp bug get a warning on their card, with the workaround. The first one: on Vulkan, full-resolution SSAO or a static sun shadow resolution other than 4096 breaks shadows, so the launcher points you to Direct3D 12. The list lives in [`known-issues.txt`](known-issues.txt) and updates without a new launcher release. See [Known issues](#known-issues).
+- **🐛 Portable installs fixed:** with `portable.txt` or a `saves` folder next to `skate3.exe`, the launcher now edits the same `settings.toml` and backs up the same saves the game uses. See [Portable installs](#portable-installs).
+- **✨ Polish:** status messages stay on screen for a few seconds, buttons you can't use look greyed out, and a finished benchmark is no longer reported as a crash.
 
 ## What's new in v3.1.0
 
@@ -143,13 +151,13 @@ Found another one? Use **Logs → Report on GitHub…** and pick "The game (Skat
 | **Header** | Page title, the **Quality preset** picker with **Apply**, and the **estimated VRAM** readout. The preset and VRAM readout appear only on settings pages. |
 | **Footer** | Status line, **Revert** (throws away unsaved changes and reloads the file), **Save** (Ctrl+S), and **PLAY**, which shows **RUNNING** while the game is open. |
 
-The status line always tells you where things stand: unsaved change count, "Settings saved. Ready to play.", whether the game is running, or that `skate3.exe` couldn't be found. It also tells you how many settings have warnings.
+The status line always tells you where things stand: unsaved change count, "Settings saved. Ready to play.", whether the game is running, or that `skate3.exe` couldn't be found. It also tells you how many settings have warnings. Messages about something you just did ("Saved profile", "Installed v2.0.3", "Bug report copied") stay up for about six seconds, until you change something else.
 
 ---
 
 ## Settings pages
 
-Every option writes the cvar named in brackets to `%APPDATA%\skate3\settings.toml`.
+Every option writes the cvar named in brackets to `%APPDATA%\skate3\settings.toml` (or to the `settings.toml` next to `skate3.exe` in [portable mode](#portable-installs)).
 
 ### Display
 - **Fullscreen** (`fullscreen`): borderless fullscreen instead of a window.
@@ -206,7 +214,7 @@ If `settings.toml` holds a value that isn't in a dropdown's list, the dropdown s
 
 - **Unsaved marker:** an orange strip on the card's left edge until you save.
 - **Reset to default** (↺ button next to the setting's name): appears only when the setting differs from its default. Hover it to see the default value; click it to set the setting back. Like any other change, this isn't written until you Save or press PLAY.
-- **Warnings:** a yellow ⚠ line under the help text when the setting conflicts with another one (see [Conflict warnings](#conflict-warnings)).
+- **Warnings:** a yellow ⚠ line under the help text when the setting conflicts with another one, or would trigger a known recomp bug (see [Conflict warnings](#conflict-warnings) and [Known issues](#known-issues)).
 - Scrolling the mouse wheel over a dropdown or slider scrolls the page, not the value, so you can't change something by accident.
 
 ---
@@ -251,6 +259,7 @@ The launcher checks your settings against each other and puts a ⚠ line on the 
 | Estimated VRAM above 90% of the GPU's memory | Render scale. |
 | A key bind is empty, isn't a key name the recomp knows, or is already used (by another bind or by the recomp's own F2–F4, F8–F12, Backtick or Escape) | That key bind on the Photo Mode page. |
 | Renderer is **Emulated** | Free camera key and Free camera speed (the free camera needs Native). |
+| A setting matches a rule in [`known-issues.txt`](known-issues.txt), for example Vulkan with Full-resolution SSAO on or a Static sun shadow resolution other than 4096 | That setting, and Graphics API. The warning names the recomp bug and the workaround. |
 
 Warnings never block saving. They're there to tell you a setting won't do what you might expect.
 
@@ -327,13 +336,13 @@ mods\
 
 ![Saves & DLC page](docs/screenshots/08-saves.png)
 
-- **Save data:** lists each gamer-profile save folder (for example `B13E07DFF9AB6772`) with its size and when it was last saved. Buttons: **Back up now** and **Open save folder**.
+- **Save data:** lists each gamer-profile save folder (for example `B13E07DFF9AB6772`) with its size and when it was last saved. Buttons: **Back up now** and **Open save folder**. With a `saves` folder next to `skate3.exe`, this uses that folder instead (see [Portable installs](#portable-installs)).
 - **Automatic backups:** **Back up saves before every launch** is on by default. It zips every save folder into `launcher-backups` each time you press PLAY or use a quick-play shortcut. **Keep the newest** (5 / 10 / 20 / 50, default 10) applies only to *automatic* backups. Manual and pre-restore backups are never deleted for you. A failed backup never stops the game from launching.
 - **Backups:** the newest 20 backups, each with its date, type (Automatic / Manual / Before a restore) and size.
-  - **Restore:** refused while the game is running, and asks for confirmation. Before replacing anything it **backs up your current saves** as a "Before a restore" backup, so a restore can always be undone. It only touches the save folders inside the zip and never writes outside `%APPDATA%\skate3`.
+  - **Restore:** refused while the game is running, and asks for confirmation. Before replacing anything it **backs up your current saves** as a "Before a restore" backup, so a restore can always be undone. It only touches the save folders inside the zip and never writes outside the save folder. Backups remember whether they came from the normal or the portable save folder, and a backup can't be restored into the other kind, because the two are laid out differently.
   - 🗑 **Delete** a backup.
   - **Open backups folder.**
-- **DLC:** lists the files in `%APPDATA%\skate3\dlc`, the folder the game loads DLC packages from. **Add DLC files…** copies the packages you choose into it, and **Open DLC folder** opens it. Only use DLC you legally own.
+- **DLC:** lists the files in `%APPDATA%\skate3\dlc` (or `dlc` next to `skate3.exe` in portable mode), the folder the game loads DLC packages from. **Add DLC files…** copies the packages you choose into it, and **Open DLC folder** opens it. Only use DLC you legally own.
 
 ---
 
@@ -369,7 +378,7 @@ Live controller polling runs only while this page is open.
 
 ![Logs page](docs/screenshots/10-logs.png)
 
-- **Last session:** reads the newest log in the game's `logs` folder and tells you whether the game is running, whether the last session **ended cleanly**, or whether the log **stops without the normal shutdown lines** (usually a crash or forced close). It also shows the file, when it was written, the game version and the error/warning counts.
+- **Last session:** reads the newest log in the game's `logs` folder and tells you whether the game is running, whether the last session **ended cleanly**, or whether the log **stops without the normal shutdown lines** (usually a crash or forced close). A session the launcher closed itself at the end of a benchmark is labelled as a benchmark run instead. It also shows the file, when it was written, the game version and the error/warning counts.
 - **Log viewer:**
   - **Log file** dropdown: every `.log` file, newest first, with its age and size.
   - **All / Warnings / Errors** filter, plus a search box.
@@ -403,7 +412,7 @@ The bug report also lists your GPU driver, enabled mods, game-file check result 
 - **Windows graphics preference for skate3.exe:** Let Windows decide, Power saving or High performance. This is the same per-app setting as Windows Settings → System → Display → Graphics, and it's what decides the GPU under Direct3D 12. It applies immediately; it's stored in your user registry, so no admin rights are needed.
 - **Add to Steam:** adds **Skate 3 (Recomp)** to your Steam library as a non-Steam game, so it works in Big Picture and on a Steam Deck. Choose whether it opens the launcher (controller-friendly) or plays straight away. Steam must be closed while the launcher edits its library file (a backup of `shortcuts.vdf` is kept). **Set artwork…** files your own images by shape: tall = library cover, very wide = hero banner, wide = grid, square = logo.
 - **Graphics driver:** your GPU, driver version and date, and the Vulkan driver the game reported. Drivers over a year old are flagged, and **Check driver** also checks a list of known-bad versions kept in this repo (`known-driver-issues.txt`). **Get the latest driver** opens AMD's, NVIDIA's or Intel's driver page.
-- **Controller navigation:** see [Keyboard and controller shortcuts](#keyboard-and-controller-shortcuts). **What's new** shows this version's changes again.
+- **Controller navigation:** see [Keyboard and controller shortcuts](#keyboard-and-controller-shortcuts). **What's new** shows this version's changes again. The pop-up also appears once after each update (and includes v3.1.0's changes if you skipped it).
 - **Shader & pipeline cache:** shows the size of the shader cache and of the whole `cache` folder.
   - **Clear shader cache** deletes `cache\nrhi_shaders` and `cache\shaders`.
   - **Clear all cache** deletes everything in `cache`.
@@ -415,8 +424,8 @@ The bug report also lists your GPU driver, enabled mods, game-file check result 
   - The available [command-line options](#command-line-and-shortcuts) are listed here too.
 - **Discord Rich Presence:** see [below](#discord-rich-presence).
 - **Game location & reset:**
-  - Shows the game path, the data folder, the launcher version and the game version.
-  - **Change game location…** points the launcher at a different `skate3.exe`.
+  - Shows the game path, the settings folder and the saves folder (marked when portable mode or a portable `saves` folder is in use), the launcher version and the game version.
+  - **Change game location…** points the launcher at a different `skate3.exe`. If that copy keeps its data somewhere else (portable mode), the launcher restarts to load it.
   - **Reset all settings to defaults** puts every setting back to its default on screen; Revert undoes it, and nothing is written until Save.
 
 ---
