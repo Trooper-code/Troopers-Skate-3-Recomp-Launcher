@@ -683,6 +683,12 @@ namespace Skate3Launcher
     {
         public string Name;          // folder name under mods\ (the mod's id)
         public string Title, Author, Version, Description;
+        public int Format;           // mod.json format (0 = v3.1 / unspecified, 1 = format 1)
+        public string PreviewPath;   // full path to preview image next to mod.json, if present
+        public string TargetRecomp = RecompFlavor.Any;   // "official", "plus", or "any"
+        public string MinVersion;    // targets.min_version
+        public List<string> Requires = new List<string>();
+        public List<string> ConflictsWith = new List<string>();
         public string Dir, Root;     // Root = the folder whose layout mirrors game\
         public bool Enabled;
         public List<string> Files = new List<string>();   // relative paths, '/' separated
@@ -734,7 +740,7 @@ namespace Skate3Launcher
             return Docs.Contains(n) || n.StartsWith("preview.") || n.StartsWith("thumbnail.") || n.EndsWith(".md") || n.EndsWith(".txt") || n == ".base";
         }
 
-        static ModInfo Read(string dir)
+        public static ModInfo Read(string dir)
         {
             var m = new ModInfo { Name = Path.GetFileName(dir), Dir = dir };
             m.Root = ResolveRoot(dir);
@@ -748,6 +754,7 @@ namespace Skate3Launcher
                     m.Author = MiniJson.S(o, "author");
                     m.Version = MiniJson.S(o, "version");
                     m.Description = MiniJson.S(o, "description");
+                    ModManifest.ReadFormat1(m, o, Path.GetDirectoryName(j));
                 }
                 catch { }
                 break;
@@ -756,6 +763,7 @@ namespace Skate3Launcher
             {
                 string rel = FileUtil.Rel(m.Root, f.FullName);
                 if (!rel.Contains('/') && IsDoc(f.Name)) continue;
+                if (m.PreviewPath != null && string.Equals(f.FullName, m.PreviewPath, StringComparison.OrdinalIgnoreCase)) continue;
                 if (GameFiles.Protected.Contains(rel.ToLowerInvariant())) { m.Skipped.Add(rel); continue; }
                 m.Files.Add(rel);
                 m.Bytes += f.Length;
@@ -769,7 +777,7 @@ namespace Skate3Launcher
             var result = new List<ModInfo>();
             string dir = Dir(gameExe);
             if (dir == null || !Directory.Exists(dir)) return result;
-            var folders = Directory.GetDirectories(dir).Where(d => { string n = Path.GetFileName(d); return !n.StartsWith(".") && !n.StartsWith("_"); })
+            var folders = Directory.GetDirectories(dir).Where(d => { string n = Path.GetFileName(d); return !n.StartsWith(".") && !n.StartsWith("_") && !n.Equals("skate2", StringComparison.OrdinalIgnoreCase); })
                 .ToDictionary(d => Path.GetFileName(d), StringComparer.OrdinalIgnoreCase);
             var order = new List<KeyValuePair<string, bool>>();
             try
@@ -812,7 +820,7 @@ namespace Skate3Launcher
             string modsDir = Dir(gameExe);
             Directory.CreateDirectory(modsDir);
             string baseName = Paths.SafeName(Path.GetFileNameWithoutExtension(source.TrimEnd('\\')));
-            if (baseName.Length == 0 || baseName.StartsWith(".") || baseName.StartsWith("_")) baseName = "mod" + baseName;
+            if (baseName.Length == 0 || baseName.StartsWith(".") || baseName.StartsWith("_") || baseName.Equals("skate2", StringComparison.OrdinalIgnoreCase)) baseName = "mod" + baseName;
             string name = baseName;
             for (int i = 2; Directory.Exists(Path.Combine(modsDir, name)); i++) name = baseName + " (" + i + ")";
             string dest = Path.Combine(modsDir, name);
