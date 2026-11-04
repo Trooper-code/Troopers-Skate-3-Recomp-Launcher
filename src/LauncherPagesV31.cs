@@ -639,6 +639,7 @@ namespace Skate3Launcher
             modsListCard = new ToolCard("Installed mods", "");
             modsListCard.Body = (w, top) => StackRows(modRows, w, top);
             page.Add(modsListCard);
+            EnableModsDragDrop(page, modsHeaderCard, modsListCard);
 
             var info = AddPage("Mods", "Install, enable and order mods. Your game files are never changed.", "", "TOOLS", false, page);
             info.OnShow = RefreshMods;
@@ -664,6 +665,8 @@ namespace Skate3Launcher
             modList = gameExe != null ? Mods.List(gameExe) : new List<ModInfo>();
             var enabled = modList.Where(m => m.Enabled && m.Files.Count > 0).ToList();
             var conflicts = Mods.Conflicts(enabled);
+            string flavor = RecompFlavor.Detect(gameExe, configPath);
+            string recompVer = RecompVersion.Current(Paths.LogsDir(gameExe), gameExe);
             var rows = new List<ItemRow>();
             for (int i = 0; i < modList.Count; i++)
             {
@@ -678,7 +681,7 @@ namespace Skate3Launcher
                 if (m.Enabled && win > 0) sub.Add("overrides " + win + " file" + (win == 1 ? "" : "s") + " from a mod above");
                 if (m.Skipped.Count > 0) sub.Add("skips " + string.Join(", ", m.Skipped) + " (the recomp can't use replaced code)");
                 if (m.Files.Count == 0) sub.Add("no usable game files");
-                var row = CreateModRow(m, string.Join("  ·  ", sub), modList);
+                var row = CreateModRow(m, string.Join("  ·  ", sub), modList, flavor, recompVer);
                 row.Main.ForeColor = m.Enabled ? Theme.Text : Theme.Muted;
                 if (!string.IsNullOrEmpty(m.Description)) tips.SetToolTip(row.Main, m.Description);
                 var toggle = MkButton(m.Enabled ? "Disable" : "Enable", null, m.Enabled ? ButtonStyle.Ghost : ButtonStyle.Secondary, null);

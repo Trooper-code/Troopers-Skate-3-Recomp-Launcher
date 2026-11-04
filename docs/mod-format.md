@@ -64,3 +64,13 @@ On the **Mods** page, the launcher checks each mod's metadata and shows a yellow
 - Any mod listed in `conflicts` is currently enabled (or another enabled mod lists this mod in its `conflicts`).
 
 These checks are **warnings, not blocks**: **PLAY** still works.
+
+## Checking and packaging
+
+On the **Modding tools** page (**Check and package a mod**), **Check mod** validates an installed mod before you share it:
+
+- **Errors (block packaging):** no usable game files, protected executables (`default.xex`, `default.xexp`, `data/webkit/EAWebkit.xex`, `data/webkit/EAWebkit.xexp`), or paths that escape the mod folder or use characters/names Windows cannot store.
+- **Warnings:** whole original game archives over 20 MB, files whose SHA-256 hash is identical to the file in `game\` (**Remove identical files** can delete the copies inside the mod folder), PS3-only formats (such as `.psg`), and new files that do not exist in `game\`.
+- **Info:** missing `mod.json` or missing `name`/`version` (**Add mod.json** fills them in), and missing preview image.
+
+**Package as .zip** writes `<Name>-<version>.zip` to your Desktop with a single top-level folder named after the mod containing `mod.json`, any preview/readme files, and the mod's game files, ready to install via **Install from .zip…** or by dragging the `.zip` onto the **Mods** page.

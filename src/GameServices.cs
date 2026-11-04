@@ -814,10 +814,30 @@ namespace Skate3Launcher
             File.WriteAllLines(ListFile(gameExe), lines);
         }
 
+        static bool SameOrInside(string dirA, string dirB)
+        {
+            if (string.IsNullOrEmpty(dirA) || string.IsNullOrEmpty(dirB)) return false;
+            string a = Path.GetFullPath(dirA).TrimEnd('\\', '/');
+            string b = Path.GetFullPath(dirB).TrimEnd('\\', '/');
+            return string.Equals(a, b, StringComparison.OrdinalIgnoreCase) || FileUtil.Inside(a, b);
+        }
+
         // Copies a mod (a .zip file or a folder) into mods\<name>. Returns the new mod's folder name.
         public static string Install(string gameExe, string source)
         {
             string modsDir = Dir(gameExe);
+            if (Directory.Exists(source))
+            {
+                string srcFull = Path.GetFullPath(source);
+                string exeDir = Path.GetFullPath(Path.GetDirectoryName(Path.GetFullPath(gameExe)));
+                string gameDir = Path.GetFullPath(FileUtil.GameRoot(gameExe));
+                string fullModsDir = Path.GetFullPath(modsDir);
+                if (SameOrInside(fullModsDir, srcFull) ||
+                    SameOrInside(srcFull, fullModsDir) ||
+                    SameOrInside(srcFull, gameDir) ||
+                    SameOrInside(srcFull, exeDir))
+                    throw new InvalidOperationException("That's the game's own folder, not a mod.");
+            }
             Directory.CreateDirectory(modsDir);
             string baseName = Paths.SafeName(Path.GetFileNameWithoutExtension(source.TrimEnd('\\')));
             if (baseName.Length == 0 || baseName.StartsWith(".") || baseName.StartsWith("_") || baseName.Equals("skate2", StringComparison.OrdinalIgnoreCase)) baseName = "mod" + baseName;

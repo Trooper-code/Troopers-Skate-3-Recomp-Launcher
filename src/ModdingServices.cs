@@ -1,11 +1,12 @@
 // Trooper's Skate 3 Recomp Launcher — modding services (no UI).
 // mod.json format 1 metadata, Recompiled+ flavor detection, compatibility/dependency warnings,
-// and new-mod folder scaffolding. Written for the C# 5 compiler in build.cmd.
+// new-mod folder scaffolding, mod validator and zip packager. Written for the C# 5 compiler in build.cmd.
 
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Text;
 
@@ -193,9 +194,23 @@ namespace Skate3Launcher
             "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
         };
 
+        public static bool IsReservedDeviceName(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+            string trimmed = name.Trim().TrimEnd('.');
+            if (ReservedNames.Contains(trimmed)) return true;
+            int dot = trimmed.IndexOf('.');
+            if (dot >= 0)
+            {
+                string stem = trimmed.Substring(0, dot).Trim();
+                if (ReservedNames.Contains(stem)) return true;
+            }
+            return false;
+        }
+
         public static string ValidateName(string gameExe, string rawName, out string cleanName)
         {
-            cleanName = (rawName ?? "").Trim().TrimEnd('.');
+            cleanName = (rawName ?? "").Trim().TrimEnd('.', ' ');
             if (string.IsNullOrEmpty(gameExe)) return "Set the game location on the Launcher page first.";
             if (cleanName.Length == 0) return "Enter a name for the mod.";
             if (cleanName.StartsWith(".") || cleanName.StartsWith("_"))
@@ -204,7 +219,7 @@ namespace Skate3Launcher
                 return "\"skate2\" is reserved for Skate 3 Recompiled+'s New San Vanelona files.";
             if (cleanName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || cleanName.Contains("/") || cleanName.Contains("\\"))
                 return "That name contains characters Windows can't use in a folder name.";
-            if (ReservedNames.Contains(cleanName))
+            if (IsReservedDeviceName(cleanName))
                 return "\"" + cleanName + "\" is a reserved Windows folder name.";
 
             string modsDir = Mods.Dir(gameExe);
@@ -260,6 +275,698 @@ namespace Skate3Launcher
             File.WriteAllText(Path.Combine(modDir, "README.txt"), readme.ToString(), new UTF8Encoding(false));
 
             return modDir;
+        }
+    }
+
+    // ====================================================================== M2: mod validator and zip packager
+
+    enum ModCheckSeverity { Error, Warning, Info }
+
+    enum ModCheckKind
+    {
+        General,
+        NoUsableFiles,
+        ProtectedFile,
+        UnsafePath,
+        WholeGameArchive,
+        IdenticalToOriginal,
+        Ps3File,
+        NewFileNotInGame,
+        MissingOrIncompleteModJson,
+        MissingPreview
+    }
+
+    class ModCheckResult
+    {
+        public ModCheckSeverity Severity;
+        public ModCheckKind Kind;
+        public string Message;
+        public string FilePath;   // relative path inside mod (or null for mod-level checks)
+        public string FullPath;   // full path on disk inside the mod folder (when applicable)
+
+        public string RelativePath { get { return FilePath; } set { FilePath = value; } }
+    }
+
+    static class ModValidator
+    {
+        public const long WholeArchiveBytes = 20L * 1024 * 1024;
+
+        static readonly string[] Ps3Extensions = { ".psg", ".fpo", ".vpo", ".spu", ".self", ".sprx" };
+        static readonly string[] Ps3FileNames = { "eboot.bin", "param.sfo" };
+
+        public static bool IsPs3File(string relPath)
+        {
+            if (string.IsNullOrEmpty(relPath)) return false;
+            string name = Path.GetFileName(relPath).ToLowerInvariant();
+            if (Ps3FileNames.Contains(name)) return true;
+            foreach (var ext in Ps3Extensions)
+                if (name.EndsWith(ext, StringComparison.Ordinal)) return true;
+            return false;
+        }
+
+        // Checks whether a relative path stays inside modRoot and uses only characters/names Windows can store.
+        public static bool IsSafeRelativePath(string modRoot, string relPath, out string reason)
+        {
+            reason = null;
+            if (string.IsNullOrEmpty(relPath)) { reason = "Empty file path."; return false; }
+            if (relPath.StartsWith("/") || relPath.StartsWith("\\") || relPath.IndexOf(':') >= 0)
+            {
+                reason = "Path \"" + relPath + "\" escapes the mod folder.";
+                return false;
+            }
+            string[] parts = relPath.Split('/', '\\');
+            foreach (var part in parts)
+            {
+                if (part.Length == 0 || part == "." || part == "..")
+                {
+                    reason = "Path \"" + relPath + "\" escapes the mod folder.";
+                    return false;
+                }
+                if (part.EndsWith(" ") || part.EndsWith("."))
+                {
+                    reason = "Path \"" + relPath + "\" has a folder or file name ending with a space or period, which Windows can't store.";
+                    return false;
+                }
+                if (part.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || part.Any(c => c < 32))
+                {
+                    reason = "Path \"" + relPath + "\" contains characters Windows can't store.";
+                    return false;
+                }
+                if (ModCreator.IsReservedDeviceName(part))
+                {
+                    reason = "Path \"" + relPath + "\" uses a reserved Windows device name (\"" + part + "\").";
+                    return false;
+                }
+            }
+            if (!string.IsNullOrEmpty(modRoot))
+            {
+                try
+                {
+                    string combined = Path.Combine(modRoot, relPath.Replace('/', '\\'));
+                    if (!FileUtil.Inside(modRoot, combined))
+                    {
+                        reason = "Path \"" + relPath + "\" escapes the mod folder.";
+                        return false;
+                    }
+                }
+                catch
+                {
+                    reason = "Path \"" + relPath + "\" is not a valid Windows path.";
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        public static List<ModCheckResult> Validate(string modDir, string gameExe)
+        {
+            return Validate(modDir, gameExe, null, null);
+        }
+
+        public static List<ModCheckResult> Validate(string modDir, string gameExe, Action<long, long, string> progress, Func<bool> cancelled)
+        {
+            if (string.IsNullOrEmpty(modDir) || !Directory.Exists(modDir))
+            {
+                return new List<ModCheckResult>
+                {
+                    new ModCheckResult { Severity = ModCheckSeverity.Error, Kind = ModCheckKind.NoUsableFiles, Message = "Mod folder does not exist." }
+                };
+            }
+            return Validate(Mods.Read(modDir), gameExe, progress, cancelled);
+        }
+
+        public static List<ModCheckResult> Validate(ModInfo mod, string gameExe)
+        {
+            return Validate(mod, gameExe, null, null);
+        }
+
+        public static List<ModCheckResult> Validate(ModInfo mod, string gameExe, Action<long, long, string> progress, Func<bool> cancelled)
+        {
+            var results = new List<ModCheckResult>();
+            if (mod == null)
+            {
+                results.Add(new ModCheckResult { Severity = ModCheckSeverity.Error, Kind = ModCheckKind.NoUsableFiles, Message = "No mod selected." });
+                return results;
+            }
+
+            // Keep any synthetic/in-memory paths passed on 'mod' before re-reading from disk.
+            var extraFiles = mod.Files != null ? new List<string>(mod.Files) : new List<string>();
+            var extraSkipped = mod.Skipped != null ? new List<string>(mod.Skipped) : new List<string>();
+
+            ModInfo m = !string.IsNullOrEmpty(mod.Dir) && Directory.Exists(mod.Dir) ? Mods.Read(mod.Dir) : mod;
+            string modRoot = m.Root ?? m.Dir;
+
+            // 1. Check any synthetic paths in extraFiles/extraSkipped that aren't on disk for path escapes or protected files.
+            var unsafeSeen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var rel in extraFiles.Concat(extraSkipped))
+            {
+                string why;
+                if (!IsSafeRelativePath(modRoot, rel, out why))
+                {
+                    if (unsafeSeen.Add(rel))
+                        results.Add(new ModCheckResult { Severity = ModCheckSeverity.Error, Kind = ModCheckKind.UnsafePath, FilePath = rel, Message = why });
+                    continue;
+                }
+                string normRel = rel.Replace('\\', '/');
+                if (GameFiles.Protected.Contains(normRel.ToLowerInvariant()) && !m.Skipped.Contains(normRel, StringComparer.OrdinalIgnoreCase))
+                    m.Skipped.Add(normRel);
+                else if (!m.Files.Contains(normRel, StringComparer.OrdinalIgnoreCase) && !m.Skipped.Contains(normRel, StringComparer.OrdinalIgnoreCase))
+                    m.Files.Add(normRel);
+            }
+
+            // 2. Check disk entries and mod.json preview for escaping or invalid paths.
+            if (!string.IsNullOrEmpty(m.Dir) && Directory.Exists(m.Dir))
+            {
+                CheckDiskPaths(m, results, unsafeSeen);
+            }
+
+            // 3. Protected files (default.xex, default.xexp, EAWebkit.xex, EAWebkit.xexp).
+            foreach (var p in m.Skipped)
+            {
+                string full = !string.IsNullOrEmpty(modRoot) ? Path.Combine(modRoot, p.Replace('/', '\\')) : null;
+                results.Add(new ModCheckResult
+                {
+                    Severity = ModCheckSeverity.Error,
+                    Kind = ModCheckKind.ProtectedFile,
+                    FilePath = p,
+                    FullPath = full,
+                    Message = p + ": Protected executable file. The recomp's code is built against the original default.xex and EAWebkit files, so mods cannot replace them."
+                });
+            }
+
+            // 4. Usable files check.
+            if (m.Files.Count == 0)
+            {
+                results.Add(new ModCheckResult
+                {
+                    Severity = ModCheckSeverity.Error,
+                    Kind = ModCheckKind.NoUsableFiles,
+                    Message = "This mod has no usable game files."
+                });
+            }
+
+            // 5. Per-file checks (whole 20 MB+ archives, identical SHA-256 to game\, PS3 formats, new files not in game\).
+            string gameRoot = !string.IsNullOrEmpty(gameExe) ? FileUtil.GameRoot(gameExe) : null;
+            bool hasGameRoot = !string.IsNullOrEmpty(gameRoot) && Directory.Exists(gameRoot);
+
+            long totalHashBytes = 0, doneHashBytes = 0;
+            if (hasGameRoot && !string.IsNullOrEmpty(modRoot))
+            {
+                foreach (var rel in m.Files)
+                {
+                    if (unsafeSeen.Contains(rel)) continue;
+                    string modFile = Path.Combine(modRoot, rel.Replace('/', '\\'));
+                    string gameFile = Path.Combine(gameRoot, rel.Replace('/', '\\'));
+                    if (File.Exists(modFile) && File.Exists(gameFile))
+                    {
+                        long len = new FileInfo(modFile).Length;
+                        if (len == new FileInfo(gameFile).Length)
+                            totalHashBytes += len * 2;
+                    }
+                }
+            }
+
+            foreach (var rel in m.Files)
+            {
+                if (cancelled != null && cancelled()) throw new OperationCanceledException();
+                if (unsafeSeen.Contains(rel)) continue;
+
+                string modFile = !string.IsNullOrEmpty(modRoot) ? Path.Combine(modRoot, rel.Replace('/', '\\')) : null;
+                bool ps3 = IsPs3File(rel);
+                if (ps3)
+                {
+                    results.Add(new ModCheckResult
+                    {
+                        Severity = ModCheckSeverity.Warning,
+                        Kind = ModCheckKind.Ps3File,
+                        FilePath = rel,
+                        FullPath = modFile,
+                        Message = rel + ": This looks like a PS3 mod. The recomp needs Xbox 360 files."
+                    });
+                }
+
+                if (!hasGameRoot || string.IsNullOrEmpty(modFile) || !File.Exists(modFile)) continue;
+
+                string gameFile = Path.Combine(gameRoot, rel.Replace('/', '\\'));
+                var modFi = new FileInfo(modFile);
+                if (File.Exists(gameFile))
+                {
+                    if (modFi.Length > WholeArchiveBytes)
+                    {
+                        long mb = (long)Math.Round(modFi.Length / 1048576.0);
+                        results.Add(new ModCheckResult
+                        {
+                            Severity = ModCheckSeverity.Warning,
+                            Kind = ModCheckKind.WholeGameArchive,
+                            FilePath = rel,
+                            FullPath = modFile,
+                            Message = rel + ": This is a whole game archive (" + mb.ToString(CultureInfo.InvariantCulture) + " MB). Sharing it means sharing EA's files, and it makes the mod huge. Once texture packs are supported, ship only the files you changed."
+                        });
+                    }
+
+                    var gameFi = new FileInfo(gameFile);
+                    if (modFi.Length == gameFi.Length)
+                    {
+                        string currentRel = rel;
+                        long beforeMod = doneHashBytes;
+                        string modHash = FileUtil.Sha256(modFile, cancelled, n =>
+                        {
+                            doneHashBytes += n;
+                            if (progress != null) progress(doneHashBytes, totalHashBytes, currentRel);
+                        });
+                        doneHashBytes = beforeMod + modFi.Length;
+
+                        long beforeGame = doneHashBytes;
+                        string gameHash = FileUtil.Sha256(gameFile, cancelled, n =>
+                        {
+                            doneHashBytes += n;
+                            if (progress != null) progress(doneHashBytes, totalHashBytes, currentRel);
+                        });
+                        doneHashBytes = beforeGame + gameFi.Length;
+
+                        if (string.Equals(modHash, gameHash, StringComparison.OrdinalIgnoreCase))
+                        {
+                            results.Add(new ModCheckResult
+                            {
+                                Severity = ModCheckSeverity.Warning,
+                                Kind = ModCheckKind.IdenticalToOriginal,
+                                FilePath = rel,
+                                FullPath = modFile,
+                                Message = rel + ": Identical to the original game file in game\\ (same SHA-256), so it does nothing."
+                            });
+                        }
+                    }
+                }
+                else if (!ps3)
+                {
+                    results.Add(new ModCheckResult
+                    {
+                        Severity = ModCheckSeverity.Warning,
+                        Kind = ModCheckKind.NewFileNotInGame,
+                        FilePath = rel,
+                        FullPath = modFile,
+                        Message = rel + ": Doesn't exist in game\\ (allowed for new files, but probably a wrong path)."
+                    });
+                }
+            }
+
+            // 6. Metadata checks: mod.json and preview image.
+            CheckMetadata(m, results, unsafeSeen);
+
+            return results;
+        }
+
+        static void CheckDiskPaths(ModInfo m, List<ModCheckResult> results, HashSet<string> unsafeSeen)
+        {
+            try
+            {
+                foreach (var f in new DirectoryInfo(m.Dir).GetFileSystemInfos("*", SearchOption.AllDirectories))
+                {
+                    string rel = FileUtil.Rel(m.Dir, f.FullName);
+                    if ((f.Attributes & FileAttributes.ReparsePoint) != 0)
+                    {
+                        if (unsafeSeen.Add(rel))
+                            results.Add(new ModCheckResult
+                            {
+                                Severity = ModCheckSeverity.Error,
+                                Kind = ModCheckKind.UnsafePath,
+                                FilePath = rel,
+                                FullPath = f.FullName,
+                                Message = rel + ": Links or junctions inside a mod folder are not allowed."
+                            });
+                        continue;
+                    }
+                    string why;
+                    if (!IsSafeRelativePath(m.Dir, rel, out why) && unsafeSeen.Add(rel))
+                    {
+                        results.Add(new ModCheckResult
+                        {
+                            Severity = ModCheckSeverity.Error,
+                            Kind = ModCheckKind.UnsafePath,
+                            FilePath = rel,
+                            FullPath = f.FullName,
+                            Message = why
+                        });
+                    }
+                }
+            }
+            catch { }
+        }
+
+        static void CheckMetadata(ModInfo m, List<ModCheckResult> results, HashSet<string> unsafeSeen)
+        {
+            string jsonPath = null;
+            if (!string.IsNullOrEmpty(m.Dir))
+            {
+                foreach (var cand in new[] { Path.Combine(m.Dir, "mod.json"), Path.Combine(m.Root ?? m.Dir, "mod.json") })
+                    if (File.Exists(cand)) { jsonPath = cand; break; }
+            }
+
+            bool hasName = !string.IsNullOrEmpty(m.Title);
+            bool hasVersion = !string.IsNullOrEmpty(m.Version);
+            string rawPreview = null;
+
+            if (jsonPath == null)
+            {
+                results.Add(new ModCheckResult
+                {
+                    Severity = ModCheckSeverity.Info,
+                    Kind = ModCheckKind.MissingOrIncompleteModJson,
+                    FilePath = "mod.json",
+                    Message = "No mod.json file. Use Add mod.json to add the mod's name and version."
+                });
+            }
+            else
+            {
+                try
+                {
+                    var o = MiniJson.Parse(File.ReadAllText(jsonPath));
+                    string n = (MiniJson.S(o, "name") ?? "").Trim();
+                    string v = (MiniJson.S(o, "version") ?? "").Trim();
+                    rawPreview = (MiniJson.S(o, "preview") ?? "").Trim();
+                    hasName = n.Length > 0;
+                    hasVersion = v.Length > 0;
+                    if (!hasName || !hasVersion)
+                    {
+                        string missing = !hasName && !hasVersion ? "name and version" : !hasName ? "name" : "version";
+                        results.Add(new ModCheckResult
+                        {
+                            Severity = ModCheckSeverity.Info,
+                            Kind = ModCheckKind.MissingOrIncompleteModJson,
+                            FilePath = "mod.json",
+                            FullPath = jsonPath,
+                            Message = "mod.json is missing " + missing + ". Use Add mod.json to fill in defaults."
+                        });
+                    }
+                }
+                catch
+                {
+                    results.Add(new ModCheckResult
+                    {
+                        Severity = ModCheckSeverity.Info,
+                        Kind = ModCheckKind.MissingOrIncompleteModJson,
+                        FilePath = "mod.json",
+                        FullPath = jsonPath,
+                        Message = "mod.json couldn't be read. Use Add mod.json to write a clean one."
+                    });
+                }
+            }
+
+            if (!string.IsNullOrEmpty(rawPreview))
+            {
+                string why;
+                string baseDir = jsonPath != null ? Path.GetDirectoryName(jsonPath) : m.Dir;
+                if (!IsSafeRelativePath(m.Dir, rawPreview, out why) ||
+                    (!string.IsNullOrEmpty(baseDir) && !string.IsNullOrEmpty(m.Dir) && !FileUtil.Inside(m.Dir, Path.Combine(baseDir, rawPreview.Replace('/', '\\')))))
+                {
+                    if (unsafeSeen.Add(rawPreview))
+                        results.Add(new ModCheckResult
+                        {
+                            Severity = ModCheckSeverity.Error,
+                            Kind = ModCheckKind.UnsafePath,
+                            FilePath = rawPreview,
+                            Message = "Preview path \"" + rawPreview + "\" in mod.json escapes the mod folder or contains invalid characters."
+                        });
+                }
+            }
+
+            bool hasPreview = !string.IsNullOrEmpty(m.PreviewPath) && File.Exists(m.PreviewPath);
+            if (!hasPreview && !string.IsNullOrEmpty(m.Dir) && Directory.Exists(m.Dir))
+            {
+                foreach (var p in new[] { "preview.png", "preview.jpg", "preview.jpeg", "thumbnail.png", "thumbnail.jpg" })
+                    if (File.Exists(Path.Combine(m.Dir, p)) || (!string.IsNullOrEmpty(m.Root) && File.Exists(Path.Combine(m.Root, p))))
+                    { hasPreview = true; break; }
+            }
+            if (!hasPreview)
+            {
+                results.Add(new ModCheckResult
+                {
+                    Severity = ModCheckSeverity.Info,
+                    Kind = ModCheckKind.MissingPreview,
+                    Message = "No preview image (optional: add a preview.png next to mod.json)."
+                });
+            }
+        }
+
+        // Creates or updates mod.json in the mod folder so it has format 1, name and version.
+        public static string EnsureModJson(ModInfo mod)
+        {
+            if (mod == null || string.IsNullOrEmpty(mod.Dir) || !Directory.Exists(mod.Dir))
+                throw new InvalidOperationException("Mod folder does not exist.");
+
+            string root = !string.IsNullOrEmpty(mod.Root) && Directory.Exists(mod.Root) ? mod.Root : mod.Dir;
+            string jsonPath = File.Exists(Path.Combine(root, "mod.json")) && !File.Exists(Path.Combine(mod.Dir, "mod.json"))
+                ? Path.Combine(root, "mod.json")
+                : Path.Combine(mod.Dir, "mod.json");
+
+            string name = !string.IsNullOrEmpty(mod.Title) ? mod.Title : mod.Name;
+            string version = !string.IsNullOrEmpty(mod.Version) ? mod.Version : "0.1.0";
+            string author = mod.Author ?? "";
+            string description = mod.Description ?? "";
+            string preview = "";
+            string targetRecomp = !string.IsNullOrEmpty(mod.TargetRecomp) ? mod.TargetRecomp : RecompFlavor.Any;
+            string minVersion = mod.MinVersion ?? "";
+            var requires = mod.Requires != null ? new List<string>(mod.Requires) : new List<string>();
+            var conflicts = mod.ConflictsWith != null ? new List<string>(mod.ConflictsWith) : new List<string>();
+
+            if (File.Exists(jsonPath))
+            {
+                try
+                {
+                    var o = MiniJson.Parse(File.ReadAllText(jsonPath));
+                    string n = (MiniJson.S(o, "name") ?? "").Trim();
+                    string v = (MiniJson.S(o, "version") ?? "").Trim();
+                    string a = MiniJson.S(o, "author");
+                    string d = MiniJson.S(o, "description");
+                    string p = MiniJson.S(o, "preview");
+                    if (n.Length > 0) name = n;
+                    if (v.Length > 0) version = v;
+                    if (a != null) author = a;
+                    if (d != null) description = d;
+                    if (p != null) preview = p;
+                }
+                catch { }
+            }
+            if (string.IsNullOrEmpty(preview))
+            {
+                foreach (var cand in new[] { "preview.png", "preview.jpg", "preview.jpeg" })
+                    if (File.Exists(Path.Combine(Path.GetDirectoryName(jsonPath), cand))) { preview = cand; break; }
+            }
+
+            var sb = new StringBuilder();
+            sb.AppendLine("{");
+            sb.AppendLine("  \"format\": 1,");
+            sb.AppendLine("  \"name\": \"" + Json.Esc(name) + "\",");
+            sb.AppendLine("  \"version\": \"" + Json.Esc(version) + "\",");
+            sb.AppendLine("  \"author\": \"" + Json.Esc(author) + "\",");
+            sb.AppendLine("  \"description\": \"" + Json.Esc(description) + "\",");
+            if (!string.IsNullOrEmpty(preview))
+                sb.AppendLine("  \"preview\": \"" + Json.Esc(preview) + "\",");
+            sb.AppendLine("  \"targets\": {");
+            if (!string.IsNullOrEmpty(minVersion))
+            {
+                sb.AppendLine("    \"recomp\": \"" + Json.Esc(targetRecomp) + "\",");
+                sb.AppendLine("    \"min_version\": \"" + Json.Esc(minVersion) + "\"");
+            }
+            else
+            {
+                sb.AppendLine("    \"recomp\": \"" + Json.Esc(targetRecomp) + "\"");
+            }
+            sb.AppendLine("  },");
+            sb.AppendLine("  \"requires\": [" + string.Join(", ", requires.Select(r => "\"" + Json.Esc(r) + "\"")) + "],");
+            sb.AppendLine("  \"conflicts\": [" + string.Join(", ", conflicts.Select(c => "\"" + Json.Esc(c) + "\"")) + "]");
+            sb.AppendLine("}");
+            File.WriteAllText(jsonPath, sb.ToString(), new UTF8Encoding(false));
+            return jsonPath;
+        }
+
+        static bool HasReparsePoint(string path)
+        {
+            try
+            {
+                if (!File.Exists(path) && !Directory.Exists(path)) return false;
+                return (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;
+            }
+            catch { return true; }
+        }
+
+        static void EnsureNoReparsePointInChain(string filePath, string modDir)
+        {
+            string stop = Path.GetFullPath(modDir).TrimEnd('\\', '/');
+            string cur = Path.GetFullPath(filePath).TrimEnd('\\', '/');
+            while (!string.IsNullOrEmpty(cur))
+            {
+                if (HasReparsePoint(cur))
+                    throw new InvalidOperationException("Refusing to delete files because the mod folder contains a link or junction: " + cur);
+                if (string.Equals(cur, stop, StringComparison.OrdinalIgnoreCase))
+                    return;
+                string parent = Path.GetDirectoryName(cur);
+                if (string.IsNullOrEmpty(parent) || string.Equals(parent, cur, StringComparison.OrdinalIgnoreCase))
+                    break;
+                cur = parent.TrimEnd('\\', '/');
+            }
+            throw new InvalidOperationException("Refusing to delete a file outside the mod folder: " + filePath);
+        }
+
+        // Deletes identical files inside the mod's own folder only. Never touches game\, mods\skate2 or mods\.active-game.
+        public static int RemoveIdenticalFiles(ModInfo mod, string gameExe, IEnumerable<ModCheckResult> results)
+        {
+            if (mod == null || string.IsNullOrEmpty(mod.Dir) || string.IsNullOrEmpty(gameExe) || results == null)
+                throw new InvalidOperationException("Select a valid mod first.");
+
+            string modsDir = Path.GetFullPath(Mods.Dir(gameExe));
+            string modDir = Path.GetFullPath(mod.Dir);
+            string gameRoot = Path.GetFullPath(FileUtil.GameRoot(gameExe));
+            string skate2Dir = Path.GetFullPath(Path.Combine(modsDir, "skate2"));
+            string activeDir = Path.GetFullPath(Mods.ActiveDir(gameExe));
+
+            if (!FileUtil.Inside(modsDir, modDir) ||
+                string.Equals(modDir, gameRoot, StringComparison.OrdinalIgnoreCase) || FileUtil.Inside(gameRoot, modDir) ||
+                string.Equals(modDir, skate2Dir, StringComparison.OrdinalIgnoreCase) || FileUtil.Inside(skate2Dir, modDir) ||
+                string.Equals(modDir, activeDir, StringComparison.OrdinalIgnoreCase) || FileUtil.Inside(activeDir, modDir))
+                throw new InvalidOperationException("Refusing to delete files outside a normal mod folder.");
+
+            if (HasReparsePoint(modDir))
+                throw new InvalidOperationException("Refusing to delete files because the mod folder is a link or junction.");
+
+            // Check every candidate file and its ancestor chain up to modDir (inclusive) before deleting anything.
+            var toDelete = new List<string>();
+            foreach (var r in results)
+            {
+                if (r == null || r.Kind != ModCheckKind.IdenticalToOriginal) continue;
+                string target = !string.IsNullOrEmpty(r.FullPath) ? r.FullPath :
+                    (!string.IsNullOrEmpty(r.FilePath) ? Path.Combine(mod.Root ?? mod.Dir, r.FilePath.Replace('/', '\\')) : null);
+                if (string.IsNullOrEmpty(target)) continue;
+                string full = Path.GetFullPath(target);
+                if (!FileUtil.Inside(modDir, full) ||
+                    FileUtil.Inside(gameRoot, full) ||
+                    FileUtil.Inside(skate2Dir, full) ||
+                    FileUtil.Inside(activeDir, full))
+                    throw new InvalidOperationException("Refusing to delete a file outside the mod folder: " + full);
+
+                EnsureNoReparsePointInChain(full, modDir);
+                if (File.Exists(full) && !toDelete.Contains(full, StringComparer.OrdinalIgnoreCase))
+                    toDelete.Add(full);
+            }
+
+            int removed = 0;
+            foreach (var full in toDelete)
+            {
+                if (File.Exists(full))
+                {
+                    File.Delete(full);
+                    removed++;
+                }
+            }
+            return removed;
+        }
+    }
+
+    // Packages a validated mod folder into <Name>-<version>.zip with a single top-level folder.
+    static class ModPackager
+    {
+        public static string DefaultZipFileName(ModInfo mod)
+        {
+            string name = Paths.SafeName(mod != null && !string.IsNullOrEmpty(mod.Display) ? mod.Display : (mod != null ? mod.Name : "Mod"));
+            if (string.IsNullOrEmpty(name)) name = "Mod";
+            string ver = Paths.SafeName(mod != null && !string.IsNullOrEmpty(mod.Version) ? mod.Version.TrimStart('v', 'V') : "0.1.0");
+            if (string.IsNullOrEmpty(ver)) ver = "0.1.0";
+            return name + "-" + ver + ".zip";
+        }
+
+        public static string DesktopZipPath(ModInfo mod)
+        {
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), DefaultZipFileName(mod));
+        }
+
+        public static string Package(ModInfo mod, string zipPath, IList<ModCheckResult> checkResults)
+        {
+            if (mod == null || string.IsNullOrEmpty(mod.Dir) || !Directory.Exists(mod.Dir))
+                throw new InvalidOperationException("Mod folder does not exist.");
+            if (string.IsNullOrEmpty(zipPath))
+                throw new ArgumentException("Specify a destination .zip path.");
+
+            var checks = checkResults ?? ModValidator.Validate(mod, null);
+            if (checks.Any(r => r.Severity == ModCheckSeverity.Error))
+                throw new InvalidOperationException("Cannot package this mod while validation errors exist.");
+
+            ModInfo fresh = Mods.Read(mod.Dir);
+            string topFolder = Paths.SafeName(!string.IsNullOrEmpty(fresh.Name) ? fresh.Name : fresh.Display);
+            if (string.IsNullOrEmpty(topFolder) || topFolder.StartsWith(".") || topFolder.StartsWith("_") || topFolder.Equals("skate2", StringComparison.OrdinalIgnoreCase))
+                topFolder = "Mod-" + topFolder;
+
+            string root = !string.IsNullOrEmpty(fresh.Root) && Directory.Exists(fresh.Root) ? fresh.Root : fresh.Dir;
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(zipPath)));
+
+            var entries = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            // Include top-level metadata/doc files (mod.json, preview, README, LICENSE, CHANGELOG) from Dir and Root.
+            foreach (var dir in new[] { fresh.Dir, root }.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                foreach (var f in new DirectoryInfo(dir).GetFiles("*", SearchOption.TopDirectoryOnly))
+                {
+                    if (IsIgnoredPackageFile(f.Name)) continue;
+                    string entryName = topFolder + "/" + f.Name;
+                    entries[entryName] = f.FullName;
+                }
+            }
+            if (!string.IsNullOrEmpty(fresh.PreviewPath) && File.Exists(fresh.PreviewPath) && FileUtil.Inside(fresh.Dir, fresh.PreviewPath))
+            {
+                string relPrev = FileUtil.Inside(root, fresh.PreviewPath) ? FileUtil.Rel(root, fresh.PreviewPath) : Path.GetFileName(fresh.PreviewPath);
+                if (!IsInDotFolder(relPrev) && !IsIgnoredPackageFile(Path.GetFileName(fresh.PreviewPath)))
+                    entries[topFolder + "/" + relPrev] = fresh.PreviewPath;
+            }
+
+            // Include all mod files under Root.
+            foreach (var f in new DirectoryInfo(root).GetFiles("*", SearchOption.AllDirectories))
+            {
+                if (IsIgnoredPackageFile(f.Name)) continue;
+                string rel = FileUtil.Rel(root, f.FullName);
+                if (IsInDotFolder(rel)) continue;
+                if (GameFiles.Protected.Contains(rel.ToLowerInvariant())) continue;
+                entries[topFolder + "/" + rel] = f.FullName;
+            }
+
+            string tmpZip = zipPath + ".tmp-launcher";
+            try
+            {
+                if (File.Exists(tmpZip)) File.Delete(tmpZip);
+                using (var fs = new FileStream(tmpZip, FileMode.Create, FileAccess.Write))
+                using (var zip = new ZipArchive(fs, ZipArchiveMode.Create))
+                {
+                    foreach (var kv in entries.OrderBy(k => k.Key, StringComparer.OrdinalIgnoreCase))
+                    {
+                        var e = zip.CreateEntry(kv.Key, CompressionLevel.Optimal);
+                        using (var src = new FileStream(kv.Value, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                        using (var dst = e.Open())
+                            src.CopyTo(dst);
+                    }
+                }
+                if (File.Exists(zipPath)) File.Delete(zipPath);
+                File.Move(tmpZip, zipPath);
+            }
+            catch
+            {
+                try { if (File.Exists(tmpZip)) File.Delete(tmpZip); } catch { }
+                throw;
+            }
+            return zipPath;
+        }
+
+        static bool IsInDotFolder(string relPath)
+        {
+            if (string.IsNullOrEmpty(relPath)) return false;
+            var parts = relPath.Split('/', '\\');
+            for (int i = 0; i < parts.Length - 1; i++)
+                if (parts[i].StartsWith(".", StringComparison.Ordinal)) return true;
+            return false;
+        }
+
+        static bool IsIgnoredPackageFile(string fileName)
+        {
+            if (string.IsNullOrEmpty(fileName)) return true;
+            string n = fileName.ToLowerInvariant();
+            return n == ".base" || n == "thumbs.db" || n == "desktop.ini" || n == ".ds_store" || n.EndsWith(".tmp-launcher");
         }
     }
 }
