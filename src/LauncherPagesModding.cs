@@ -130,7 +130,7 @@ namespace Skate3Launcher
         {
             DrawMode = DrawMode.OwnerDrawFixed;
             BorderStyle = BorderStyle.None;
-            BackColor = Color.FromArgb(17, 18, 23);
+            BackColor = Theme.Bg;
             ForeColor = Theme.Text;
             Font = Theme.Small;
             ItemHeight = Dpi.S(22);
@@ -148,9 +148,9 @@ namespace Skate3Launcher
             bool sel = (e.State & DrawItemState.Selected) != 0;
             using (var b = new SolidBrush(sel ? Theme.NavSel : BackColor)) e.Graphics.FillRectangle(b, e.Bounds);
             ModCheckSeverity sev = e.Index < Results.Count ? Results[e.Index].Severity : ModCheckSeverity.Info;
-            Color c = sev == ModCheckSeverity.Error ? Color.FromArgb(255, 120, 120) :
+            Color c = sev == ModCheckSeverity.Error ? Theme.Error :
                       sev == ModCheckSeverity.Warning ? Theme.Warn :
-                      Color.FromArgb(196, 200, 212);
+                      Theme.Muted;
             TextRenderer.DrawText(e.Graphics, line, Font, new Point(e.Bounds.X + Dpi.S(8), e.Bounds.Y + Dpi.S(2)), c, Gfx.Flat);
         }
     }
@@ -396,7 +396,7 @@ namespace Skate3Launcher
             modCheckCombo.Enabled = moddingModList.Count > 0 && !modCheckRunning;
             packageZipBtn.Enabled = !modCheckRunning && checkedThisMod && !hasErrors;
             addModJsonBtn.Enabled = !modCheckRunning && needsModJson;
-            removeIdenticalBtn.Enabled = !modCheckRunning && hasIdentical;
+            removeIdenticalBtn.Enabled = !modCheckRunning && hasIdentical && !hasErrors;
         }
 
         void StartOrCancelModCheck()
@@ -498,7 +498,7 @@ namespace Skate3Launcher
             if (errors > 0)
             {
                 modCheckStatus.Text = summary + "Fix the errors below before packaging.";
-                modCheckStatus.ForeColor = Theme.Warn;
+                modCheckStatus.ForeColor = Theme.Error;
             }
             else if (warnings > 0)
             {
@@ -519,6 +519,7 @@ namespace Skate3Launcher
         {
             var m = SelectedModForCheck();
             if (m == null || lastCheckResults == null) return;
+            if (lastCheckResults.Any(r => r.Severity == ModCheckSeverity.Error)) return;
             if (GameRunningGuard("modifying a mod")) return;
 
             var identical = lastCheckResults.Where(r => r.Kind == ModCheckKind.IdenticalToOriginal).ToList();

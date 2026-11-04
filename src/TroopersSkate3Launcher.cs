@@ -1,4 +1,4 @@
-﻿// Trooper's Skate 3 Recomp Launcher
+// Trooper's Skate 3 Recomp Launcher
 // Edits %APPDATA%\skate3\settings.toml (the game's cvar file) through a GUI and launches skate3.exe.
 // Build: build.cmd in this folder  (uses the .NET Framework C# compiler that ships with Windows)
 // Source files: TroopersSkate3Launcher.cs (window + settings), LauncherPages.cs (tool pages), LauncherServices.cs (background services)
@@ -204,6 +204,7 @@ namespace Skate3Launcher
         public static readonly Color AccentDim = Color.FromArgb(70, 36, 32);
         public static readonly Color Good = Color.FromArgb(74, 222, 128);
         public static readonly Color Warn = Color.FromArgb(251, 191, 36);
+        public static readonly Color Error = Color.FromArgb(248, 113, 113);
 
         public static readonly string IconFace = FontExists("Segoe Fluent Icons") ? "Segoe Fluent Icons" : "Segoe MDL2 Assets";
         // False on systems without the Windows icon fonts (e.g. Wine/Mono): icons are then left out instead of drawing empty boxes.

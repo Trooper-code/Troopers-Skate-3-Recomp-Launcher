@@ -210,12 +210,9 @@ namespace Skate3Launcher
 
         public static string ValidateName(string gameExe, string rawName, out string cleanName)
         {
-            string raw = rawName ?? "";
-            cleanName = raw.Trim().TrimEnd('.');
+            cleanName = (rawName ?? "").Trim().TrimEnd('.', ' ');
             if (string.IsNullOrEmpty(gameExe)) return "Set the game location on the Launcher page first.";
             if (cleanName.Length == 0) return "Enter a name for the mod.";
-            if (raw.EndsWith(" ") || raw.EndsWith("\t") || raw.TrimEnd('.').EndsWith(" ") || cleanName.EndsWith(" "))
-                return "Mod folder names can't end with a space.";
             if (cleanName.StartsWith(".") || cleanName.StartsWith("_"))
                 return "Mod folder names can't start with '.' or '_' (the mod loader ignores those folders).";
             if (cleanName.Equals("skate2", StringComparison.OrdinalIgnoreCase))
@@ -783,6 +780,34 @@ namespace Skate3Launcher
             return jsonPath;
         }
 
+        static bool HasReparsePoint(string path)
+        {
+            try
+            {
+                if (!File.Exists(path) && !Directory.Exists(path)) return false;
+                return (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;
+            }
+            catch { return true; }
+        }
+
+        static void EnsureNoReparsePointInChain(string filePath, string modDir)
+        {
+            string stop = Path.GetFullPath(modDir).TrimEnd('\\', '/');
+            string cur = Path.GetFullPath(filePath).TrimEnd('\\', '/');
+            while (!string.IsNullOrEmpty(cur))
+            {
+                if (HasReparsePoint(cur))
+                    throw new InvalidOperationException("Refusing to delete files because the mod folder contains a link or junction: " + cur);
+                if (string.Equals(cur, stop, StringComparison.OrdinalIgnoreCase))
+                    return;
+                string parent = Path.GetDirectoryName(cur);
+                if (string.IsNullOrEmpty(parent) || string.Equals(parent, cur, StringComparison.OrdinalIgnoreCase))
+                    break;
+                cur = parent.TrimEnd('\\', '/');
+            }
+            throw new InvalidOperationException("Refusing to delete a file outside the mod folder: " + filePath);
+        }
+
         // Deletes identical files inside the mod's own folder only. Never touches game\, mods\skate2 or mods\.active-game.
         public static int RemoveIdenticalFiles(ModInfo mod, string gameExe, IEnumerable<ModCheckResult> results)
         {
@@ -801,7 +826,11 @@ namespace Skate3Launcher
                 string.Equals(modDir, activeDir, StringComparison.OrdinalIgnoreCase) || FileUtil.Inside(activeDir, modDir))
                 throw new InvalidOperationException("Refusing to delete files outside a normal mod folder.");
 
-            int removed = 0;
+            if (HasReparsePoint(modDir))
+                throw new InvalidOperationException("Refusing to delete files because the mod folder is a link or junction.");
+
+            // Check every candidate file and its ancestor chain up to modDir (inclusive) before deleting anything.
+            var toDelete = new List<string>();
             foreach (var r in results)
             {
                 if (r == null || r.Kind != ModCheckKind.IdenticalToOriginal) continue;
@@ -814,6 +843,15 @@ namespace Skate3Launcher
                     FileUtil.Inside(skate2Dir, full) ||
                     FileUtil.Inside(activeDir, full))
                     throw new InvalidOperationException("Refusing to delete a file outside the mod folder: " + full);
+
+                EnsureNoReparsePointInChain(full, modDir);
+                if (File.Exists(full) && !toDelete.Contains(full, StringComparer.OrdinalIgnoreCase))
+                    toDelete.Add(full);
+            }
+
+            int removed = 0;
+            foreach (var full in toDelete)
+            {
                 if (File.Exists(full))
                 {
                     File.Delete(full);
@@ -875,7 +913,8 @@ namespace Skate3Launcher
             if (!string.IsNullOrEmpty(fresh.PreviewPath) && File.Exists(fresh.PreviewPath) && FileUtil.Inside(fresh.Dir, fresh.PreviewPath))
             {
                 string relPrev = FileUtil.Inside(root, fresh.PreviewPath) ? FileUtil.Rel(root, fresh.PreviewPath) : Path.GetFileName(fresh.PreviewPath);
-                entries[topFolder + "/" + relPrev] = fresh.PreviewPath;
+                if (!IsInDotFolder(relPrev) && !IsIgnoredPackageFile(Path.GetFileName(fresh.PreviewPath)))
+                    entries[topFolder + "/" + relPrev] = fresh.PreviewPath;
             }
 
             // Include all mod files under Root.
@@ -883,6 +922,7 @@ namespace Skate3Launcher
             {
                 if (IsIgnoredPackageFile(f.Name)) continue;
                 string rel = FileUtil.Rel(root, f.FullName);
+                if (IsInDotFolder(rel)) continue;
                 if (GameFiles.Protected.Contains(rel.ToLowerInvariant())) continue;
                 entries[topFolder + "/" + rel] = f.FullName;
             }
@@ -913,11 +953,20 @@ namespace Skate3Launcher
             return zipPath;
         }
 
+        static bool IsInDotFolder(string relPath)
+        {
+            if (string.IsNullOrEmpty(relPath)) return false;
+            var parts = relPath.Split('/', '\\');
+            for (int i = 0; i < parts.Length - 1; i++)
+                if (parts[i].StartsWith(".", StringComparison.Ordinal)) return true;
+            return false;
+        }
+
         static bool IsIgnoredPackageFile(string fileName)
         {
             if (string.IsNullOrEmpty(fileName)) return true;
             string n = fileName.ToLowerInvariant();
-            return n == ".base" || n.EndsWith(".tmp-launcher");
+            return n == ".base" || n == "thumbs.db" || n == "desktop.ini" || n == ".ds_store" || n.EndsWith(".tmp-launcher");
         }
     }
 }
