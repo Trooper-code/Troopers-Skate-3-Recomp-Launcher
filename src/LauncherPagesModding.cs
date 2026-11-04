@@ -620,7 +620,14 @@ namespace Skate3Launcher
                     AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
-            if (GameRunningGuard("testing a mod")) return;
+            if (IsGameRunning())
+            {
+                if (File.Exists(TempConfigBackup.BackupPath(configPath)))
+                    MessageBox.Show(this, TempConfigBackup.UnrestoredError, AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                else
+                    GameRunningGuard("testing a mod");
+                return;
+            }
             if (PendingChanges().Count > 0)
             {
                 int ch = DarkDialog.Ask(this, "Save your changes first?",
@@ -669,7 +676,10 @@ namespace Skate3Launcher
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, "Couldn't launch skate3.exe for testing:\n\n" + ex.Message, AppName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, ex.Message == TempConfigBackup.UnrestoredError
+                    ? ex.Message
+                    : "Couldn't launch skate3.exe for testing:\n\n" + ex.Message,
+                    AppName, MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
 
@@ -707,6 +717,7 @@ namespace Skate3Launcher
                 {
                     testModRunning = false;
                     if (PendingChanges().Count == 0) ReloadFromFile(); else config.Load();
+                    if (!Visible && TrayEnabled) RestoreFromTray();
                     UpdateRunningState();
                     if (modCheckStatus != null && !modCheckRunning)
                     {

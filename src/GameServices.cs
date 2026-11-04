@@ -1248,21 +1248,30 @@ namespace Skate3Launcher
         // Marks a backup taken when there was no settings.toml at all, so restoring deletes the file again
         // (an empty settings.toml would stop the recomp from applying its first-run defaults).
         public const string NoFileMarker = "# launcher: settings.toml did not exist before the benchmark";
+        public const string UnrestoredError = "Your previous settings haven't been restored yet. Close Skate 3 and try again.";
 
         public static string BackupPath(string configPath)
         {
             return (configPath ?? Paths.Config) + ".benchmark-backup";
         }
 
-        public static void BackupConfig() { BackupConfig(Paths.Config); }
+        public static void BackupConfig() { BackupConfig(Paths.Config, MainForm.IsGameRunning); }
 
-        public static void BackupConfig(string configPath)
+        public static void BackupConfig(string configPath) { BackupConfig(configPath, MainForm.IsGameRunning); }
+
+        public static void BackupConfig(string configPath, Func<bool> isGameRunning)
         {
             string cfg = configPath ?? Paths.Config;
             string bak = BackupPath(cfg);
+            if (File.Exists(bak))
+            {
+                if (isGameRunning != null && isGameRunning())
+                    throw new InvalidOperationException(UnrestoredError);
+                RestoreConfig(cfg);
+            }
             string dir = Path.GetDirectoryName(bak);
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-            if (File.Exists(cfg)) File.Copy(cfg, bak, true);
+            if (File.Exists(cfg)) File.Copy(cfg, bak, false);
             else File.WriteAllText(bak, NoFileMarker + "\n", new UTF8Encoding(false));
         }
 

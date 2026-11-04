@@ -906,7 +906,13 @@ namespace Skate3Launcher
         void RunBenchmark()
         {
             if (benchBusy) return;
-            if (IsGameRunning()) { MessageBox.Show(this, "Close Skate 3 first. The benchmark starts its own session.", AppName); return; }
+            if (IsGameRunning())
+            {
+                MessageBox.Show(this, File.Exists(TempConfigBackup.BackupPath(configPath))
+                    ? TempConfigBackup.UnrestoredError
+                    : "Close Skate 3 first. The benchmark starts its own session.", AppName);
+                return;
+            }
             if (gameExe == null) { MessageBox.Show(this, "Set the game location on the Launcher page first.", AppName); return; }
             int routeIdx = Math.Max(0, benchRoute.SelectedIndex);
             string inputs = BenchRouteInputs[routeIdx] ?? benchInputs.Box.Text.Trim();
@@ -968,8 +974,9 @@ namespace Skate3Launcher
                     else
                     {
                         benchStatus.ForeColor = Theme.Warn;
-                        benchStatus.Text = error + " Your settings were restored.";
+                        benchStatus.Text = error == TempConfigBackup.UnrestoredError ? error : error + " Your settings were restored.";
                     }
+                    if (!Visible && TrayEnabled) RestoreFromTray();
                     Activate();
                     RefreshBenchmarks();
                 });
