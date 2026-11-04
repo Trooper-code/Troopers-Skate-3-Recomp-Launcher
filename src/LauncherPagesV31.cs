@@ -85,12 +85,23 @@ namespace Skate3Launcher
 
         // ------------------------------------------------------------------ startup hook (called from the constructor)
 
+        bool pendingConfigRecovery;
+
         void SetupV31()
         {
-            if (Benchmarks.RecoverConfig()) ReloadFromFile();   // the launcher closed in the middle of a benchmark last time
+            if (TempConfigBackup.RecoverConfig()) ReloadFromFile();   // the launcher closed in the middle of a benchmark or mod test last time
+            else if (File.Exists(TempConfigBackup.BackupPath(configPath))) pendingConfigRecovery = true;   // skate3.exe is still running; recover once it exits
             navEnabled = LauncherPrefs.Bool("controller_nav", true);
             navTimer = new Timer { Interval = 40 };
-            navTimer.Tick += delegate { NavTick(); };
+            navTimer.Tick += delegate
+            {
+                if (pendingConfigRecovery && !benchBusy && !testModRunning && !IsGameRunning())
+                {
+                    pendingConfigRecovery = false;
+                    if (TempConfigBackup.RecoverConfig()) ReloadFromFile();
+                }
+                NavTick();
+            };
             navTimer.Start();
             Shown += delegate
             {
