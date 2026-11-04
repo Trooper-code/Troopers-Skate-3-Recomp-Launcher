@@ -13,8 +13,8 @@ Built one milestone at a time, all on the **Modding tools** page (hidden unless 
 1. ~~`mod.json` format 1 and the Modding tools page~~ (done)
 2. ~~Mod checker and packager, plus drag-and-drop installs~~ (done)
 3. ~~Create mod from changes~~ (done)
-4. **Test this mod** (in progress): quick launch with just one mod enabled, straight to gameplay, with your settings put back afterwards.
-5. **File access log:** see which game files the game actually reads, to find what to mod.
+4. ~~Test this mod~~ (done)
+5. **File access log** (in progress): see which game files the game actually reads, to find what to mod.
 6. **Archive browser:** look inside the game's `.big` (EB3) archives.
 7. **Texture packs:** mods that change individual files inside the game's archives.
 

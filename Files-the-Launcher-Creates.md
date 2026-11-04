@@ -11,7 +11,7 @@ Everything goes in the game's own user-data folder: `%APPDATA%\skate3` normally,
 | `launcher-backups\saves-<date>-<auto/manual/pre-restore>.zip` | Save backups. |
 | `launcher-benchmarks.csv` | Benchmark results. |
 | `launcher-game-baseline.txt` | Your own game-file hashes, if you saved a baseline. |
-| `settings.toml.benchmark-backup` | Only exists while a benchmark is running. |
+| `settings.toml.benchmark-backup` | Only exists while a benchmark or mod test is running. The launcher puts it back when the game closes, or the next time the launcher starts. |
 
 Next to `skate3.exe`:
 

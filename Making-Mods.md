@@ -84,7 +84,14 @@ Turn on **Launcher → Modding tools → Show modding tools** and restart the la
   - Unchanged files are left out, and you're warned before creating a mod with more than 50 files or 500 MB.
   - New mods start disabled. Turn them on from the [[Mods]] page.
 
-More tools are on the way: quick test launches, a log of which files the game actually reads, and an archive browser for the game's `.big` files. See [[Roadmap]].
+- **Test a mod:** pick a mod in the **Check and package a mod** card and press **Test mod**. The game boots straight to gameplay with only that mod (plus any mods its `mod.json` lists under `requires`), even if it's disabled on the Mods page. Your other mods and your Mods page settings aren't changed.
+  - Tests boot **signed out** and skip the intro movies, so your career saves aren't touched.
+  - The launcher backs up `settings.toml` before the test and puts it back when the game closes. If you have unsaved setting changes, it asks whether to save them first.
+  - If a required mod isn't installed, it tells you which one and asks before testing without it.
+  - If you close the launcher while a test is still running, it asks first. **Keep open** hides it to the tray (if the tray is on), **Close anyway** puts your settings back right away, and **Cancel** does nothing.
+  - If the launcher was closed or crashed during a test, it puts your settings back the next time it starts (once the game is closed).
+
+More tools are on the way: a log of which files the game actually reads, and an archive browser for the game's `.big` files. See [[Roadmap]].
 
 ## Skate 3 Recompiled+
 
