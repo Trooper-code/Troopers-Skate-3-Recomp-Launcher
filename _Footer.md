@@ -1,0 +1,1 @@
+Unofficial, not affiliated with the Skate 3 Recomp developers or EA · [MIT license](https://github.com/Trooper-code/Troopers-Skate-3-Recomp-Launcher/blob/main/LICENSE) · [Download](https://github.com/Trooper-code/Troopers-Skate-3-Recomp-Launcher/releases) · [Report a bug](https://github.com/Trooper-code/Troopers-Skate-3-Recomp-Launcher/issues)
