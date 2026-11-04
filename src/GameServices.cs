@@ -814,7 +814,7 @@ namespace Skate3Launcher
             File.WriteAllLines(ListFile(gameExe), lines);
         }
 
-        static bool SameOrInside(string dirA, string dirB)
+        public static bool SameOrInside(string dirA, string dirB)
         {
             if (string.IsNullOrEmpty(dirA) || string.IsNullOrEmpty(dirB)) return false;
             string a = Path.GetFullPath(dirA).TrimEnd('\\', '/');

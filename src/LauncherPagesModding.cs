@@ -155,6 +155,140 @@ namespace Skate3Launcher
         }
     }
 
+    // Owner-drawn checklist for ModFromChanges.Compare results (Changed and New files can be ticked; Skipped items are greyed out).
+    class ModChangesView : ListBox
+    {
+        public class RowItem
+        {
+            public ModChangeEntry Entry;
+            public bool Checked;
+        }
+
+        public readonly List<RowItem> Rows = new List<RowItem>();
+        public event EventHandler CheckedChanged;
+
+        public ModChangesView()
+        {
+            DrawMode = DrawMode.OwnerDrawFixed;
+            BorderStyle = BorderStyle.None;
+            BackColor = Theme.Bg;
+            ForeColor = Theme.Text;
+            Font = Theme.Small;
+            ItemHeight = Dpi.S(24);
+            HorizontalScrollbar = true;
+            IntegralHeight = false;
+            SelectionMode = SelectionMode.One;
+        }
+
+        protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); Native.DarkTheme(this, "DarkMode_Explorer"); }
+
+        public void SetEntries(IEnumerable<ModChangeEntry> entries)
+        {
+            BeginUpdate();
+            Items.Clear();
+            Rows.Clear();
+            if (entries != null)
+            {
+                foreach (var entry in entries)
+                {
+                    if (entry == null || entry.Status == ModChangeStatus.Unchanged) continue;
+                    bool selectable = entry.Status == ModChangeStatus.Changed || entry.Status == ModChangeStatus.New;
+                    var row = new RowItem { Entry = entry, Checked = selectable };
+                    Rows.Add(row);
+                    Items.Add(FormatRowText(entry));
+                }
+            }
+            EndUpdate();
+        }
+
+        static string FormatRowText(ModChangeEntry e)
+        {
+            if (e.Status == ModChangeStatus.Skipped)
+                return "[Skipped]  " + e.RelativePath + "  —  " + (e.SkipReason ?? "skipped");
+            string tag = e.Status == ModChangeStatus.New ? "[New]      " : "[Changed]  ";
+            return tag + e.RelativePath + "  (" + Paths.Size(e.Size) + ")";
+        }
+
+        void ToggleRow(int index)
+        {
+            if (index < 0 || index >= Rows.Count) return;
+            var r = Rows[index];
+            if (r.Entry.Status == ModChangeStatus.Skipped) return;
+            r.Checked = !r.Checked;
+            Invalidate(GetItemRectangle(index));
+            if (CheckedChanged != null) CheckedChanged(this, EventArgs.Empty);
+        }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            base.OnMouseDown(e);
+            if (e.Button != MouseButtons.Left) return;
+            int idx = IndexFromPoint(e.Location);
+            if (idx >= 0 && idx < Rows.Count) ToggleRow(idx);
+        }
+
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Space && SelectedIndex >= 0)
+            {
+                ToggleRow(SelectedIndex);
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+            base.OnKeyDown(e);
+        }
+
+        protected override void OnDrawItem(DrawItemEventArgs e)
+        {
+            if (e.Index < 0 || e.Index >= Rows.Count) return;
+            var row = Rows[e.Index];
+            var entry = row.Entry;
+            bool sel = (e.State & DrawItemState.Selected) != 0;
+            using (var b = new SolidBrush(sel ? Theme.NavSel : BackColor))
+                e.Graphics.FillRectangle(b, e.Bounds);
+
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            int boxSz = Dpi.S(14);
+            int boxX = e.Bounds.X + Dpi.S(8);
+            int boxY = e.Bounds.Y + (e.Bounds.Height - boxSz) / 2;
+            var boxRect = new RectangleF(boxX, boxY, boxSz, boxSz);
+
+            bool selectable = entry.Status == ModChangeStatus.Changed || entry.Status == ModChangeStatus.New;
+            if (selectable)
+            {
+                Color fill = row.Checked ? Theme.Accent : Theme.Input;
+                Color border = row.Checked ? Theme.Accent : Theme.Border;
+                Gfx.FillRound(e.Graphics, fill, boxRect, Dpi.Sf(3));
+                Gfx.DrawRound(e.Graphics, border, boxRect, Dpi.Sf(3), 1f);
+                if (row.Checked)
+                {
+                    using (var pen = new Pen(Theme.Text, Math.Max(1.5f, Dpi.Sf(1.8f))))
+                    {
+                        e.Graphics.DrawLines(pen, new[]
+                        {
+                            new PointF(boxX + boxSz * 0.22f, boxY + boxSz * 0.52f),
+                            new PointF(boxX + boxSz * 0.44f, boxY + boxSz * 0.74f),
+                            new PointF(boxX + boxSz * 0.78f, boxY + boxSz * 0.28f)
+                        });
+                    }
+                }
+            }
+            else
+            {
+                Gfx.FillRound(e.Graphics, Theme.Card, boxRect, Dpi.Sf(3));
+                Gfx.DrawRound(e.Graphics, Theme.CardBorder, boxRect, Dpi.Sf(3), 1f);
+            }
+
+            Color textColor = entry.Status == ModChangeStatus.Skipped ? Theme.Muted :
+                              !row.Checked ? Theme.Muted :
+                              entry.Status == ModChangeStatus.New ? Theme.Good :
+                              Theme.Text;
+            string line = (string)Items[e.Index];
+            TextRenderer.DrawText(e.Graphics, line, Font, new Point(boxX + boxSz + Dpi.S(8), e.Bounds.Y + Dpi.S(3)), textColor, Gfx.Flat);
+        }
+    }
+
     partial class MainForm
     {
         RoundTextBox newModNameBox;
@@ -168,6 +302,14 @@ namespace Skate3Launcher
         List<ModCheckResult> lastCheckResults;
         string lastCheckedModDir;
         bool modCheckRunning, modCheckCancel, updatingModCheckCombo;
+
+        RoundTextBox workDirBox, fromChangesNameBox;
+        PillButton browseWorkBtn, compareWorkBtn, createFromChangesBtn;
+        Label fromChangesStatus;
+        ModChangesView modChangesView;
+        List<ModChangeEntry> lastCompareResults;
+        string lastComparedWorkDir;
+        bool compareRunning, compareCancel;
 
         ModItemRow CreateModRow(ModInfo m, string subText, IList<ModInfo> allMods)
         {
@@ -309,6 +451,68 @@ namespace Skate3Launcher
             };
             page.Add(checkCard);
 
+            // ---- M3: Create a mod from changed files
+            var fromChangesCard = new ToolCard("Create a mod from changed files",
+                "Compare an edited copy of the game\\ folder against your clean game\\ folder, tick the changed or new files you want to ship, and build a new mod in mods\\.");
+            var workCap = MkLabel("Work folder (your edited copy of game\\)", Theme.Small, Theme.Muted);
+            workDirBox = new RoundTextBox { Width = D(360) };
+            browseWorkBtn = MkButton("Browse…", "\uE8B7", ButtonStyle.Secondary, "Pick your edited copy of the game\\ folder.");
+            var fromNameCap = MkLabel("Mod name", Theme.Small, Theme.Muted);
+            fromChangesNameBox = new RoundTextBox { Width = D(280) };
+            compareWorkBtn = MkButton("Compare", "\uE721", ButtonStyle.Secondary, "Compare the work folder against game\\.");
+            fromChangesStatus = MkLabel("Pick a work folder and press Compare.", Theme.Base, Theme.Muted);
+            modChangesView = new ModChangesView { Visible = false };
+            createFromChangesBtn = MkButton("Create mod", "\uE710", ButtonStyle.Primary, "Copy the ticked files into mods\\<name>\\ with a format-1 mod.json and run Check mod.");
+
+            browseWorkBtn.Click += delegate { BrowseWorkFolder(); };
+            workDirBox.Box.TextChanged += delegate
+            {
+                if (lastComparedWorkDir != null && !string.Equals(workDirBox.Box.Text.Trim(), lastComparedWorkDir, StringComparison.OrdinalIgnoreCase))
+                    ClearFromChangesResults();
+                UpdateFromChangesButtons();
+                RelayoutCurrent();
+            };
+            fromChangesNameBox.Box.TextChanged += delegate { UpdateFromChangesButtons(); };
+            compareWorkBtn.Click += delegate { StartOrCancelCompare(); };
+            modChangesView.CheckedChanged += delegate { UpdateFromChangesSummaryAndButtons(); };
+            createFromChangesBtn.Click += delegate { CreateModFromChanges(); };
+
+            fromChangesCard.Controls.AddRange(new Control[]
+            {
+                workCap, workDirBox, browseWorkBtn,
+                fromNameCap, fromChangesNameBox, compareWorkBtn,
+                fromChangesStatus, modChangesView, createFromChangesBtn
+            });
+            fromChangesCard.Body = (w, top) =>
+            {
+                workCap.Location = new Point(D(20), top);
+                int workBoxW = Math.Max(D(180), w - browseWorkBtn.Width - D(48));
+                workDirBox.SetBounds(D(20), workCap.Bottom + D(4), workBoxW, D(34));
+                browseWorkBtn.Location = new Point(workDirBox.Right + D(8), workDirBox.Top - 1);
+                int y = Math.Max(workDirBox.Bottom, browseWorkBtn.Bottom) + D(10);
+
+                fromNameCap.Location = new Point(D(20), y);
+                int nameBoxW = Math.Min(D(320), Math.Max(D(160), w - compareWorkBtn.Width - D(48)));
+                fromChangesNameBox.SetBounds(D(20), fromNameCap.Bottom + D(4), nameBoxW, D(34));
+                compareWorkBtn.Location = new Point(fromChangesNameBox.Right + D(8), fromChangesNameBox.Top - 1);
+                y = Math.Max(fromChangesNameBox.Bottom, compareWorkBtn.Bottom);
+
+                if (fromChangesStatus.Text.Length > 0)
+                {
+                    fromChangesStatus.MaximumSize = new Size(w - D(40), 0);
+                    fromChangesStatus.Location = new Point(D(20), y + D(12));
+                    y = fromChangesStatus.Bottom;
+                }
+                if (modChangesView.Visible)
+                {
+                    int listH = Math.Min(D(220), Math.Max(D(66), modChangesView.Items.Count * modChangesView.ItemHeight + D(12)));
+                    modChangesView.SetBounds(D(20), y + D(10), w - D(40), listH);
+                    y = modChangesView.Bottom;
+                }
+                return Row(D(20), y + D(12), createFromChangesBtn);
+            };
+            page.Add(fromChangesCard);
+
             var info = AddPage("Modding tools", "Make, test and package mods.", "\uE90F", "TOOLS", false, page);
             info.OnShow = RefreshModdingToolsPage;
         }
@@ -357,6 +561,7 @@ namespace Skate3Launcher
                 ClearModCheckResults();
 
             UpdateModCheckButtons();
+            UpdateFromChangesButtons();
             RelayoutCurrent();
         }
 
@@ -632,6 +837,258 @@ namespace Skate3Launcher
                 if (newModStatus != null) { newModStatus.Text = ex.Message; newModStatus.ForeColor = Theme.Warn; }
                 MessageBox.Show(this, "Couldn't create the mod folder:\n\n" + ex.Message, AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
+            RelayoutCurrent();
+        }
+
+        // ---- M3 handlers: Create a mod from changed files
+
+        void BrowseWorkFolder()
+        {
+            if (compareRunning) return;
+            using (var dlg = new FolderBrowserDialog { Description = "Pick your edited copy of the game\\ folder (not the game's own game\\ folder)." })
+            {
+                string cur = workDirBox != null ? workDirBox.Box.Text.Trim() : "";
+                if (Directory.Exists(cur)) dlg.SelectedPath = cur;
+                if (dlg.ShowDialog(this) != DialogResult.OK) return;
+                string chosen = dlg.SelectedPath;
+                string resolved;
+                if (TryResolveAndValidateWorkFolder(chosen, out resolved))
+                    workDirBox.Box.Text = resolved;
+            }
+        }
+
+        bool TryResolveAndValidateWorkFolder(string rawWorkDir, out string resolvedWorkDir)
+        {
+            resolvedWorkDir = (rawWorkDir ?? "").Trim();
+            string suggested;
+            string err = ModFromChanges.ValidateWorkDir(resolvedWorkDir, gameExe, out suggested);
+            if (err != null)
+            {
+                if (fromChangesStatus != null) { fromChangesStatus.Text = err; fromChangesStatus.ForeColor = Theme.Warn; }
+                MessageBox.Show(this, err, AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                RelayoutCurrent();
+                return false;
+            }
+            if (!string.IsNullOrEmpty(suggested))
+            {
+                if (DarkDialog.Ask(this,
+                        "Use the game\\ subfolder?",
+                        "That folder isn't a game\\ copy itself, but it has a game\\ subfolder holding default.xex:\n\n" +
+                        suggested + "\n\nCompare that game\\ subfolder instead?",
+                        "Use game\\ subfolder", "Use chosen folder") == 0)
+                {
+                    resolvedWorkDir = suggested;
+                }
+            }
+            return true;
+        }
+
+        void ClearFromChangesResults()
+        {
+            lastCompareResults = null;
+            lastComparedWorkDir = null;
+            if (modChangesView != null)
+            {
+                modChangesView.SetEntries(null);
+                modChangesView.Visible = false;
+            }
+            if (fromChangesStatus != null && !compareRunning)
+            {
+                fromChangesStatus.Text = "Pick a work folder and press Compare.";
+                fromChangesStatus.ForeColor = Theme.Muted;
+            }
+        }
+
+        void UpdateFromChangesButtons()
+        {
+            if (compareWorkBtn == null) return;
+            string workText = workDirBox != null ? workDirBox.Box.Text.Trim() : "";
+            string nameText = fromChangesNameBox != null ? fromChangesNameBox.Box.Text.Trim() : "";
+            bool hasCompared = lastCompareResults != null && !string.IsNullOrEmpty(lastComparedWorkDir) &&
+                               string.Equals(workText, lastComparedWorkDir, StringComparison.OrdinalIgnoreCase);
+            bool anyTicked = hasCompared && modChangesView != null && modChangesView.Rows.Any(r => r.Checked &&
+                             (r.Entry.Status == ModChangeStatus.Changed || r.Entry.Status == ModChangeStatus.New));
+
+            compareWorkBtn.Text = compareRunning ? "Cancel" : "Compare";
+            compareWorkBtn.Enabled = compareRunning || workText.Length > 0;
+            if (browseWorkBtn != null) browseWorkBtn.Enabled = !compareRunning;
+            if (workDirBox != null) workDirBox.Enabled = !compareRunning;
+            if (createFromChangesBtn != null) createFromChangesBtn.Enabled = !compareRunning && anyTicked && nameText.Length > 0;
+        }
+
+        void UpdateFromChangesSummaryAndButtons()
+        {
+            if (lastCompareResults != null && fromChangesStatus != null)
+            {
+                int changed = lastCompareResults.Count(e => e.Status == ModChangeStatus.Changed);
+                int added = lastCompareResults.Count(e => e.Status == ModChangeStatus.New);
+                int unchanged = lastCompareResults.Count(e => e.Status == ModChangeStatus.Unchanged);
+                int skipped = lastCompareResults.Count(e => e.Status == ModChangeStatus.Skipped);
+                var ticked = modChangesView != null
+                    ? modChangesView.Rows.Where(r => r.Checked && (r.Entry.Status == ModChangeStatus.Changed || r.Entry.Status == ModChangeStatus.New)).ToList()
+                    : new List<ModChangesView.RowItem>();
+                long tickedBytes = ticked.Sum(r => r.Entry.Size);
+
+                string summary = changed + " changed, " + added + " new, " + unchanged + " unchanged, " + skipped + " skipped.";
+                if (changed + added == 0)
+                {
+                    fromChangesStatus.Text = summary + " No changed or new files were found.";
+                    fromChangesStatus.ForeColor = Theme.Muted;
+                }
+                else
+                {
+                    fromChangesStatus.Text = summary + "  (" + ticked.Count + " ticked, " + Paths.Size(tickedBytes) + ")";
+                    fromChangesStatus.ForeColor = ticked.Count > 0 ? Theme.Good : Theme.Muted;
+                }
+            }
+            UpdateFromChangesButtons();
+            RelayoutCurrent();
+        }
+
+        void StartOrCancelCompare()
+        {
+            if (compareRunning)
+            {
+                compareCancel = true;
+                return;
+            }
+            string rawWork = workDirBox != null ? workDirBox.Box.Text.Trim() : "";
+            string workDir;
+            if (!TryResolveAndValidateWorkFolder(rawWork, out workDir)) return;
+            if (workDirBox != null && !string.Equals(workDirBox.Box.Text.Trim(), workDir, StringComparison.Ordinal))
+                workDirBox.Box.Text = workDir;
+
+            compareRunning = true;
+            compareCancel = false;
+            if (modChangesView != null)
+            {
+                modChangesView.SetEntries(null);
+                modChangesView.Visible = false;
+            }
+            fromChangesStatus.Text = "Comparing " + workDir + " against game\\…";
+            fromChangesStatus.ForeColor = Theme.Muted;
+            UpdateFromChangesButtons();
+            RelayoutCurrent();
+
+            string exe = gameExe;
+            DateTime lastUi = DateTime.MinValue;
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                List<ModChangeEntry> entries = null;
+                bool cancelled = false;
+                string fatalError = null;
+                try
+                {
+                    entries = ModFromChanges.Compare(workDir, exe, (done, total, file) =>
+                    {
+                        if ((DateTime.UtcNow - lastUi).TotalMilliseconds < 80) return;
+                        lastUi = DateTime.UtcNow;
+                        int pct = total > 0 ? (int)Math.Min(99L, done * 100L / total) : 0;
+                        Ui(delegate
+                        {
+                            if (!compareRunning) return;
+                            fromChangesStatus.Text = "Hashing " + file + "… " + pct.ToString(CultureInfo.InvariantCulture) + "%";
+                        });
+                    }, () => compareCancel);
+                }
+                catch (OperationCanceledException) { cancelled = true; }
+                catch (Exception ex) { fatalError = ex.Message; }
+
+                Ui(delegate
+                {
+                    compareRunning = false;
+                    if (cancelled)
+                    {
+                        fromChangesStatus.Text = "Comparison cancelled.";
+                        fromChangesStatus.ForeColor = Theme.Muted;
+                        UpdateFromChangesButtons();
+                        RelayoutCurrent();
+                        return;
+                    }
+                    if (fatalError != null)
+                    {
+                        fromChangesStatus.Text = "Couldn't compare the work folder: " + fatalError;
+                        fromChangesStatus.ForeColor = Theme.Warn;
+                        UpdateFromChangesButtons();
+                        RelayoutCurrent();
+                        return;
+                    }
+                    ApplyCompareResults(workDir, entries ?? new List<ModChangeEntry>());
+                });
+            });
+        }
+
+        void ApplyCompareResults(string workDir, List<ModChangeEntry> entries)
+        {
+            lastComparedWorkDir = workDir;
+            lastCompareResults = entries;
+            if (modChangesView != null)
+            {
+                modChangesView.SetEntries(entries);
+                modChangesView.Visible = modChangesView.Items.Count > 0;
+            }
+            UpdateFromChangesSummaryAndButtons();
+        }
+
+        void CreateModFromChanges()
+        {
+            if (compareRunning || lastCompareResults == null || modChangesView == null) return;
+            if (GameRunningGuard("creating a mod")) return;
+
+            string workDir = workDirBox != null ? workDirBox.Box.Text.Trim() : "";
+            string cleanName;
+            string nameErr = ModCreator.ValidateName(gameExe, fromChangesNameBox != null ? fromChangesNameBox.Box.Text : "", out cleanName);
+            if (nameErr != null)
+            {
+                fromChangesStatus.Text = nameErr;
+                fromChangesStatus.ForeColor = Theme.Warn;
+                Flash(nameErr, Theme.Warn);
+                RelayoutCurrent();
+                return;
+            }
+
+            var ticked = modChangesView.Rows
+                .Where(r => r.Checked && (r.Entry.Status == ModChangeStatus.Changed || r.Entry.Status == ModChangeStatus.New))
+                .Select(r => r.Entry)
+                .ToList();
+            if (ticked.Count == 0)
+            {
+                Flash("Tick at least one changed or new file first.", Theme.Warn);
+                return;
+            }
+
+            long totalBytes = ticked.Sum(e => e.Size);
+            if (ticked.Count > ModFromChanges.LargeSelectionFileWarningCount || totalBytes > ModFromChanges.LargeSelectionBytesWarning)
+            {
+                if (DarkDialog.Ask(this,
+                        "Create mod with " + ticked.Count + " files (" + Paths.Size(totalBytes) + ")?",
+                        "That's a lot of the game. Ship only the files you changed.\n\nCreate \"" + cleanName + "\" with these " + ticked.Count + " files anyway?",
+                        "Create mod", "Cancel") != 0)
+                    return;
+            }
+
+            try
+            {
+                string createdDir = ModFromChanges.Create(gameExe, workDir, cleanName, ticked.Select(e => e.RelativePath));
+                if (fromChangesNameBox != null) fromChangesNameBox.Box.Text = "";
+                fromChangesStatus.Text = "Created " + createdDir + " (" + ticked.Count + " file" + (ticked.Count == 1 ? "" : "s") + ").";
+                fromChangesStatus.ForeColor = Theme.Good;
+                Flash("Created mod \"" + cleanName + "\" from " + ticked.Count + " file" + (ticked.Count == 1 ? "" : "s") + ".", Theme.Good);
+
+                // Select the newly created mod in "Check and package a mod" and run Check mod on it automatically.
+                lastCheckedModDir = createdDir;
+                RefreshMods();
+                RefreshModdingToolsPage();
+                if (!modCheckRunning)
+                    StartOrCancelModCheck();
+            }
+            catch (Exception ex)
+            {
+                fromChangesStatus.Text = ex.Message;
+                fromChangesStatus.ForeColor = Theme.Warn;
+                MessageBox.Show(this, "Couldn't create the mod:\n\n" + ex.Message, AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            UpdateFromChangesButtons();
             RelayoutCurrent();
         }
 
