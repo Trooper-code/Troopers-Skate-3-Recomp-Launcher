@@ -309,7 +309,7 @@ namespace Skate3Launcher
         ModChangesView modChangesView;
         List<ModChangeEntry> lastCompareResults;
         string lastComparedWorkDir;
-        bool compareRunning, compareCancel;
+        bool compareRunning, compareCancel, createFromChangesRunning;
 
         ModItemRow CreateModRow(ModInfo m, string subText, IList<ModInfo> allMods)
         {
@@ -844,7 +844,7 @@ namespace Skate3Launcher
 
         void BrowseWorkFolder()
         {
-            if (compareRunning) return;
+            if (compareRunning || createFromChangesRunning) return;
             using (var dlg = new FolderBrowserDialog { Description = "Pick your edited copy of the game\\ folder (not the game's own game\\ folder)." })
             {
                 string cur = workDirBox != null ? workDirBox.Box.Text.Trim() : "";
@@ -892,7 +892,7 @@ namespace Skate3Launcher
                 modChangesView.SetEntries(null);
                 modChangesView.Visible = false;
             }
-            if (fromChangesStatus != null && !compareRunning)
+            if (fromChangesStatus != null && !compareRunning && !createFromChangesRunning)
             {
                 fromChangesStatus.Text = "Pick a work folder and press Compare.";
                 fromChangesStatus.ForeColor = Theme.Muted;
@@ -902,6 +902,7 @@ namespace Skate3Launcher
         void UpdateFromChangesButtons()
         {
             if (compareWorkBtn == null) return;
+            bool busy = compareRunning || createFromChangesRunning;
             string workText = workDirBox != null ? workDirBox.Box.Text.Trim() : "";
             string nameText = fromChangesNameBox != null ? fromChangesNameBox.Box.Text.Trim() : "";
             bool hasCompared = lastCompareResults != null && !string.IsNullOrEmpty(lastComparedWorkDir) &&
@@ -910,15 +911,17 @@ namespace Skate3Launcher
                              (r.Entry.Status == ModChangeStatus.Changed || r.Entry.Status == ModChangeStatus.New));
 
             compareWorkBtn.Text = compareRunning ? "Cancel" : "Compare";
-            compareWorkBtn.Enabled = compareRunning || workText.Length > 0;
-            if (browseWorkBtn != null) browseWorkBtn.Enabled = !compareRunning;
-            if (workDirBox != null) workDirBox.Enabled = !compareRunning;
-            if (createFromChangesBtn != null) createFromChangesBtn.Enabled = !compareRunning && anyTicked && nameText.Length > 0;
+            compareWorkBtn.Enabled = compareRunning || (!createFromChangesRunning && workText.Length > 0);
+            if (browseWorkBtn != null) browseWorkBtn.Enabled = !busy;
+            if (workDirBox != null) workDirBox.Enabled = !busy;
+            if (fromChangesNameBox != null) fromChangesNameBox.Enabled = !createFromChangesRunning;
+            if (modChangesView != null) modChangesView.Enabled = !busy;
+            if (createFromChangesBtn != null) createFromChangesBtn.Enabled = !busy && anyTicked && nameText.Length > 0;
         }
 
         void UpdateFromChangesSummaryAndButtons()
         {
-            if (lastCompareResults != null && fromChangesStatus != null)
+            if (!createFromChangesRunning && lastCompareResults != null && fromChangesStatus != null)
             {
                 int changed = lastCompareResults.Count(e => e.Status == ModChangeStatus.Changed);
                 int added = lastCompareResults.Count(e => e.Status == ModChangeStatus.New);
@@ -947,6 +950,7 @@ namespace Skate3Launcher
 
         void StartOrCancelCompare()
         {
+            if (createFromChangesRunning) return;
             if (compareRunning)
             {
                 compareCancel = true;
@@ -1032,10 +1036,11 @@ namespace Skate3Launcher
 
         void CreateModFromChanges()
         {
-            if (compareRunning || lastCompareResults == null || modChangesView == null) return;
+            if (compareRunning || createFromChangesRunning || lastCompareResults == null || string.IsNullOrEmpty(lastComparedWorkDir) || modChangesView == null)
+                return;
             if (GameRunningGuard("creating a mod")) return;
 
-            string workDir = workDirBox != null ? workDirBox.Box.Text.Trim() : "";
+            string workDir = lastComparedWorkDir;
             string cleanName;
             string nameErr = ModCreator.ValidateName(gameExe, fromChangesNameBox != null ? fromChangesNameBox.Box.Text : "", out cleanName);
             if (nameErr != null)
@@ -1067,29 +1072,64 @@ namespace Skate3Launcher
                     return;
             }
 
-            try
-            {
-                string createdDir = ModFromChanges.Create(gameExe, workDir, cleanName, ticked.Select(e => e.RelativePath));
-                if (fromChangesNameBox != null) fromChangesNameBox.Box.Text = "";
-                fromChangesStatus.Text = "Created " + createdDir + " (" + ticked.Count + " file" + (ticked.Count == 1 ? "" : "s") + ").";
-                fromChangesStatus.ForeColor = Theme.Good;
-                Flash("Created mod \"" + cleanName + "\" from " + ticked.Count + " file" + (ticked.Count == 1 ? "" : "s") + ".", Theme.Good);
+            var relPaths = ticked.Select(e => e.RelativePath).ToList();
+            int tickedCount = relPaths.Count;
+            string exe = gameExe;
 
-                // Select the newly created mod in "Check and package a mod" and run Check mod on it automatically.
-                lastCheckedModDir = createdDir;
-                RefreshMods();
-                RefreshModdingToolsPage();
-                if (!modCheckRunning)
-                    StartOrCancelModCheck();
-            }
-            catch (Exception ex)
-            {
-                fromChangesStatus.Text = ex.Message;
-                fromChangesStatus.ForeColor = Theme.Warn;
-                MessageBox.Show(this, "Couldn't create the mod:\n\n" + ex.Message, AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            }
+            createFromChangesRunning = true;
+            fromChangesStatus.Text = "Creating " + cleanName + "… (0 of " + tickedCount.ToString(CultureInfo.InvariantCulture) + " files)";
+            fromChangesStatus.ForeColor = Theme.Muted;
             UpdateFromChangesButtons();
             RelayoutCurrent();
+
+            DateTime lastUi = DateTime.MinValue;
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                string createdDir = null;
+                string createError = null;
+                try
+                {
+                    createdDir = ModFromChanges.Create(exe, workDir, cleanName, relPaths, (done, total, file) =>
+                    {
+                        if (done != 1 && done != total && (DateTime.UtcNow - lastUi).TotalMilliseconds < 60) return;
+                        lastUi = DateTime.UtcNow;
+                        Ui(delegate
+                        {
+                            if (!createFromChangesRunning) return;
+                            fromChangesStatus.Text = "Creating " + cleanName + "… (" + done.ToString(CultureInfo.InvariantCulture) + " of " + total.ToString(CultureInfo.InvariantCulture) + " files)";
+                        });
+                    });
+                }
+                catch (Exception ex) { createError = ex.Message; }
+
+                Ui(delegate
+                {
+                    createFromChangesRunning = false;
+                    if (createError != null)
+                    {
+                        fromChangesStatus.Text = createError;
+                        fromChangesStatus.ForeColor = Theme.Warn;
+                        UpdateFromChangesButtons();
+                        RelayoutCurrent();
+                        MessageBox.Show(this, "Couldn't create the mod:\n\n" + createError, AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+
+                    if (fromChangesNameBox != null) fromChangesNameBox.Box.Text = "";
+                    fromChangesStatus.Text = "Created " + createdDir + " (" + tickedCount + " file" + (tickedCount == 1 ? "" : "s") + ").";
+                    fromChangesStatus.ForeColor = Theme.Good;
+                    Flash("Created mod \"" + cleanName + "\" from " + tickedCount + " file" + (tickedCount == 1 ? "" : "s") + ".", Theme.Good);
+
+                    // Select the newly created mod in "Check and package a mod" and run Check mod on it automatically.
+                    lastCheckedModDir = createdDir;
+                    RefreshMods();
+                    RefreshModdingToolsPage();
+                    if (!modCheckRunning)
+                        StartOrCancelModCheck();
+                    UpdateFromChangesButtons();
+                    RelayoutCurrent();
+                });
+            });
         }
 
         void AddLauncherModdingCard()

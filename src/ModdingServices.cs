@@ -958,7 +958,7 @@ namespace Skate3Launcher
             return zipPath;
         }
 
-        static bool IsInDotFolder(string relPath)
+        public static bool IsInDotFolder(string relPath)
         {
             if (string.IsNullOrEmpty(relPath)) return false;
             var parts = relPath.Split('/', '\\');
@@ -967,11 +967,18 @@ namespace Skate3Launcher
             return false;
         }
 
-        static bool IsIgnoredPackageFile(string fileName)
+        public static bool IsIgnoredPackageFile(string fileName)
         {
             if (string.IsNullOrEmpty(fileName)) return true;
             string n = fileName.ToLowerInvariant();
             return n == ".base" || n == "thumbs.db" || n == "desktop.ini" || n == ".ds_store" || n.EndsWith(".tmp-launcher");
+        }
+
+        public static bool IsRootMetadataFile(string fileName)
+        {
+            if (string.IsNullOrEmpty(fileName)) return false;
+            string n = fileName.ToLowerInvariant();
+            return n == "mod.json" || n == "readme.txt" || n == "readme.md" || n.StartsWith("preview.", StringComparison.Ordinal);
         }
     }
 
@@ -1119,7 +1126,9 @@ namespace Skate3Launcher
             foreach (var f in files)
             {
                 if (cancelled != null && cancelled()) throw new OperationCanceledException();
+                if (ModPackager.IsIgnoredPackageFile(f.Name)) continue;
                 string rel = FileUtil.Rel(workRoot, f.FullName);
+                if (!rel.Contains('/') && ModPackager.IsRootMetadataFile(f.Name)) continue;
                 if ((f.Attributes & FileAttributes.ReparsePoint) != 0 || ModValidator.HasReparsePoint(f.FullName))
                 {
                     entries.Add(new ModChangeEntry
@@ -1188,6 +1197,7 @@ namespace Skate3Launcher
             foreach (var sub in subDirs)
             {
                 if (cancelled != null && cancelled()) throw new OperationCanceledException();
+                if (ModPackager.IsInDotFolder(sub.Name + "/x")) continue;
                 string relDir = FileUtil.Rel(workRoot, sub.FullName);
                 if ((sub.Attributes & FileAttributes.ReparsePoint) != 0 || ModValidator.HasReparsePoint(sub.FullName))
                 {
@@ -1208,6 +1218,11 @@ namespace Skate3Launcher
         // Copies only the selected relative paths from workDir into mods\<modName>\ with a format-1 mod.json.
         // Uses a temporary staging folder under mods\ so a failed copy leaves nothing half-made.
         public static string Create(string gameExe, string workDir, string modName, IEnumerable<string> selectedRelPaths)
+        {
+            return Create(gameExe, workDir, modName, selectedRelPaths, null);
+        }
+
+        public static string Create(string gameExe, string workDir, string modName, IEnumerable<string> selectedRelPaths, Action<int, int, string> progress)
         {
             string suggested;
             string workErr = ValidateWorkDir(workDir, gameExe, out suggested);
@@ -1257,8 +1272,10 @@ namespace Skate3Launcher
             try
             {
                 Directory.CreateDirectory(tmp);
-                foreach (var rel in cleanRels)
+                for (int i = 0; i < cleanRels.Count; i++)
                 {
+                    string rel = cleanRels[i];
+                    if (progress != null) progress(i + 1, cleanRels.Count, rel);
                     string srcFile = Path.Combine(workFull, rel.Replace('/', '\\'));
                     string dstFile = Path.Combine(tmp, rel.Replace('/', '\\'));
                     if (!FileUtil.Inside(tmp, dstFile))
