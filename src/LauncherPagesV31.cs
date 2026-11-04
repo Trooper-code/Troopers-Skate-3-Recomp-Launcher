@@ -678,8 +678,7 @@ namespace Skate3Launcher
                 if (m.Enabled && win > 0) sub.Add("overrides " + win + " file" + (win == 1 ? "" : "s") + " from a mod above");
                 if (m.Skipped.Count > 0) sub.Add("skips " + string.Join(", ", m.Skipped) + " (the recomp can't use replaced code)");
                 if (m.Files.Count == 0) sub.Add("no usable game files");
-                var row = new ItemRow((m.Enabled ? "●  " : "○  ") + m.Display + (string.IsNullOrEmpty(m.Version) ? "" : "  v" + m.Version.TrimStart('v')),
-                    string.Join("  ·  ", sub));
+                var row = CreateModRow(m, string.Join("  ·  ", sub), modList);
                 row.Main.ForeColor = m.Enabled ? Theme.Text : Theme.Muted;
                 if (!string.IsNullOrEmpty(m.Description)) tips.SetToolTip(row.Main, m.Description);
                 var toggle = MkButton(m.Enabled ? "Disable" : "Enable", null, m.Enabled ? ButtonStyle.Ghost : ButtonStyle.Secondary, null);

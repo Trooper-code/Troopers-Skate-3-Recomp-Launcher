@@ -328,7 +328,9 @@ mods\
     data\content\createacharacter.big
 ```
 
-`mod.json` is optional and can hold `name`, `author`, `version` and `description`. A `game` subfolder, or one wrapper folder (which most zips have), works too. Files must be the Xbox 360 versions: PS3 mods use different formats (`.psg` instead of `.rx2`, for example) and won't load.
+`mod.json` is optional and supports format 1 metadata: `name`, `author`, `version`, `description`, `preview` (a thumbnail image shown on the mod's row), `targets.recomp` (`"official"`, `"plus"` for Skate 3 Recompiled+, or `"any"`), `targets.min_version`, `requires`, and `conflicts` (see [`docs/mod-format.md`](docs/mod-format.md)). When a mod's target recomp or minimum version doesn't match your install, a required mod is missing or disabled, or a conflicting mod is enabled, the mod's row shows a `⚠` warning line (warnings never block **PLAY**). A `game` subfolder, or one wrapper folder (which most zips have), works too. Files must be the Xbox 360 versions: PS3 mods use different formats (`.psg` instead of `.rx2`, for example) and won't load.
+
+**Modding tools page:** turn on **Launcher → Show modding tools** and restart the launcher to add the **Modding tools** page under Tools. Use **Start a new mod** to create `mods\<name>\` with a format-1 `mod.json`, an empty `data\` folder and a `README.txt`, and open it in Explorer.
 
 ---
 
@@ -423,6 +425,7 @@ The bug report also lists your GPU driver, enabled mods, game-file check result 
   - **Quick-play shortcut** starts the game straight away with your saved settings, skipping the window; saves are still backed up.
   - The available [command-line options](#command-line-and-shortcuts) are listed here too.
 - **Discord Rich Presence:** see [below](#discord-rich-presence).
+- **Modding tools:** **Show modding tools** (`modding_tools` in `launcher.ini`, off by default) adds a **Modding tools** page to the sidebar on the next launch for making and testing mods.
 - **Game location & reset:**
   - Shows the game path, the settings folder and the saves folder (marked when portable mode or a portable `saves` folder is in use), the launcher version and the game version.
   - **Change game location…** points the launcher at a different `skate3.exe`. If that copy keeps its data somewhere else (portable mode), the launcher restarts to load it.
@@ -569,6 +572,8 @@ It **never** modifies the `game` folder. It only replaces `skate3.exe` and the r
 | `src/LauncherServices.cs` | Background services: paths and prefs, GPU detection (Vulkan), save backups, log parsing, update check, Discord IPC, shortcuts, system info, XInput/DirectInput. |
 | `src/LauncherPagesV31.cs` | The Game files, Mods and Benchmark pages, the Photo Mode extras, the Steam / driver / crash-report cards, controller navigation and the What's new dialog. |
 | `src/GameServices.cs` | v3.1 background services: mod loader, recomp installer and rollback, game-file checks, benchmark runner, Steam `shortcuts.vdf` writer, driver check, crash dumps. |
+| `src/LauncherPagesModding.cs` | The Modding tools page, the Launcher-page modding toggle card, and Mods-page preview thumbnails and warning rows. |
+| `src/ModdingServices.cs` | Modding background services: `mod.json` format 1 metadata, Recompiled+ flavor detection, compatibility/dependency warnings, and new-mod scaffolding. |
 | `src/build.cmd` | Builds the exe with the C# compiler that ships with Windows. |
 
 Double-click **`src\build.cmd`** (or run it from a terminal). It uses `%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe`, so no Visual Studio or .NET SDK is needed, and writes `bin\Trooper's Skate 3 Recomp Launcher.exe`. The code is C# 5 so that built-in compiler accepts it.

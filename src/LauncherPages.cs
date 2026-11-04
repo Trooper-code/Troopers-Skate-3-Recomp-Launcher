@@ -357,6 +357,7 @@ namespace Skate3Launcher
         {
             BuildGameFilesPage();
             BuildModsPage();
+            if (LauncherPrefs.Bool("modding_tools", false)) BuildModdingToolsPage();
             BuildProfilesPage();
             BuildSavesPage();
             BuildBenchmarkPage();
@@ -365,6 +366,7 @@ namespace Skate3Launcher
             BuildLauncherPage();
             AddPhotoModeCards();
             AddLauncherV31Cards();
+            AddLauncherModdingCard();
             AddLogsV31Cards();
         }
 
