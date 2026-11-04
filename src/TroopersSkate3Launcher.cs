@@ -1,4 +1,4 @@
-// Trooper's Skate 3 Recomp Launcher
+﻿// Trooper's Skate 3 Recomp Launcher
 // Edits %APPDATA%\skate3\settings.toml (the game's cvar file) through a GUI and launches skate3.exe.
 // Build: build.cmd in this folder  (uses the .NET Framework C# compiler that ships with Windows)
 // Source files: TroopersSkate3Launcher.cs (window + settings), LauncherPages.cs (tool pages), LauncherServices.cs (background services)
