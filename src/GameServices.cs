@@ -949,11 +949,24 @@ namespace Skate3Launcher
         // ---- launch: builds mods\.active-game (hard links to the game plus the mods' files) and returns it
         public static ModPlan Prepare(string gameExe)
         {
+            return Prepare(gameExe, null);
+        }
+
+        public static ModPlan Prepare(string gameExe, IList<ModInfo> only)
+        {
             var plan = new ModPlan();
             if (gameExe == null) return plan;
             List<ModInfo> enabled;
-            try { enabled = LoaderEnabled ? List(gameExe).Where(m => m.Enabled && m.Files.Count > 0).ToList() : new List<ModInfo>(); }
-            catch (Exception ex) { plan.Warnings.Add("Couldn't read the mods folder: " + ex.Message); enabled = new List<ModInfo>(); }
+            if (only != null)
+            {
+                try { enabled = OrderModsForPrepare(gameExe, only); }
+                catch (Exception ex) { plan.Warnings.Add("Couldn't read the mods folder: " + ex.Message); enabled = new List<ModInfo>(); }
+            }
+            else
+            {
+                try { enabled = LoaderEnabled ? List(gameExe).Where(m => m.Enabled && m.Files.Count > 0).ToList() : new List<ModInfo>(); }
+                catch (Exception ex) { plan.Warnings.Add("Couldn't read the mods folder: " + ex.Message); enabled = new List<ModInfo>(); }
+            }
             if (enabled.Count == 0) { CleanActive(gameExe); return plan; }
 
             string root = FileUtil.GameRoot(gameExe);
@@ -979,10 +992,13 @@ namespace Skate3Launcher
             foreach (var f in new DirectoryInfo(root).GetFiles("*", SearchOption.AllDirectories)) map[FileUtil.Rel(root, f.FullName)] = f.FullName;
             foreach (var m in enabled)
             {
-                foreach (var rel in m.Files)
+                string modRoot = !string.IsNullOrEmpty(m.Root) ? m.Root : m.Dir;
+                foreach (var rawRel in m.Files)
                 {
+                    string rel = rawRel.Replace('\\', '/');
+                    if (GameFiles.Protected.Contains(rel.ToLowerInvariant())) continue;
                     if (map.ContainsKey(rel)) plan.Replaced++; else plan.Added++;
-                    map[rel] = Path.Combine(m.Root, rel.Replace('/', '\\'));
+                    map[rel] = Path.Combine(modRoot, rel.Replace('/', '\\'));
                 }
                 var changedBase = ChangedBase(gameExe, m);
                 foreach (var c in changedBase.Take(3))
@@ -992,7 +1008,11 @@ namespace Skate3Launcher
 
             string active = ActiveDir(gameExe);
             string manifest = ManifestFile(gameExe);
-            var wanted = map.OrderBy(k => k.Key, StringComparer.OrdinalIgnoreCase).Select(k => k.Key + "|" + k.Value + "|" + SafeLen(k.Value)).ToList();
+            var wanted = new List<string>
+            {
+                "# mods|" + (only != null ? "test:" : "play:") + string.Join("|", enabled.Select(m => m.Name ?? ""))
+            };
+            wanted.AddRange(map.OrderBy(k => k.Key, StringComparer.OrdinalIgnoreCase).Select(k => k.Key + "|" + k.Value + "|" + SafeLen(k.Value)));
             try
             {
                 if (Directory.Exists(active) && File.Exists(manifest) && File.ReadAllLines(manifest).SequenceEqual(wanted) && AllPresent(active, map))
@@ -1029,6 +1049,89 @@ namespace Skate3Launcher
             return plan;
         }
 
+        static List<ModInfo> OrderModsForPrepare(string gameExe, IList<ModInfo> only)
+        {
+            var distinct = new List<ModInfo>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var raw in only)
+            {
+                if (raw == null) continue;
+                ModInfo m = (string.IsNullOrEmpty(raw.Root) && !string.IsNullOrEmpty(raw.Dir) && Directory.Exists(raw.Dir)) ? Read(raw.Dir) : raw;
+                string key = !string.IsNullOrEmpty(m.Name) ? m.Name : (m.Dir ?? "");
+                if (key.Length == 0 || !seen.Add(key)) continue;
+                if (m.Files == null || m.Files.Count == 0) continue;
+                distinct.Add(m);
+            }
+            if (distinct.Count <= 1) return distinct;
+
+            var loadOrderIndex = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var inModlistFile = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                string lf = ListFile(gameExe);
+                if (!string.IsNullOrEmpty(lf) && File.Exists(lf))
+                {
+                    foreach (var l in File.ReadAllLines(lf))
+                    {
+                        string t = l.Trim();
+                        if (t.Length >= 2 && (t[0] == '+' || t[0] == '-'))
+                            inModlistFile.Add(t.Substring(1));
+                    }
+                }
+                var all = List(gameExe);
+                for (int i = 0; i < all.Count; i++)
+                {
+                    if (!string.IsNullOrEmpty(all[i].Name) && !loadOrderIndex.ContainsKey(all[i].Name))
+                        loadOrderIndex[all[i].Name] = i;
+                }
+            }
+            catch { }
+
+            var ordered = distinct
+                .Select((m, idx) =>
+                {
+                    int rank;
+                    if (!string.IsNullOrEmpty(m.Name) && loadOrderIndex.TryGetValue(m.Name, out rank))
+                        return new KeyValuePair<int, ModInfo>(rank, m);
+                    return new KeyValuePair<int, ModInfo>(100000 + idx, m);
+                })
+                .OrderBy(kv => kv.Key)
+                .Select(kv => kv.Value)
+                .ToList();
+
+            // Ensure required mods load before the mod that requires them when not explicitly ordered otherwise in modlist.txt.
+            bool moved = true;
+            int guard = 0;
+            while (moved && guard++ < ordered.Count * ordered.Count)
+            {
+                moved = false;
+                for (int i = 0; i < ordered.Count; i++)
+                {
+                    var m = ordered[i];
+                    if (m.Requires == null || m.Requires.Count == 0) continue;
+                    foreach (var req in m.Requires)
+                    {
+                        int depIdx = ordered.FindIndex(x => ModManifest.MatchesMod(x, req));
+                        if (depIdx > i)
+                        {
+                            var dep = ordered[depIdx];
+                            bool explicitOrder = !string.IsNullOrEmpty(m.Name) && !string.IsNullOrEmpty(dep.Name) &&
+                                                 inModlistFile.Contains(m.Name) && inModlistFile.Contains(dep.Name);
+                            if (!explicitOrder)
+                            {
+                                ordered.RemoveAt(depIdx);
+                                ordered.Insert(i, dep);
+                                moved = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (moved) break;
+                }
+            }
+            return ordered;
+        }
+
         static string SafeLen(string f) { try { return new FileInfo(f).Length.ToString(CultureInfo.InvariantCulture); } catch { return "0"; } }
 
         static bool AllPresent(string active, Dictionary<string, string> map)
@@ -1042,7 +1145,7 @@ namespace Skate3Launcher
         {
             if (!Directory.Exists(active)) return;
             var known = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            try { if (File.Exists(manifest)) foreach (var l in File.ReadAllLines(manifest)) { int i = l.IndexOf('|'); if (i > 0) known.Add(l.Substring(0, i)); } } catch { }
+            try { if (File.Exists(manifest)) foreach (var l in File.ReadAllLines(manifest)) { if (l.StartsWith("#")) continue; int i = l.IndexOf('|'); if (i > 0) known.Add(l.Substring(0, i)); } } catch { }
             foreach (var f in Directory.GetFiles(active, "*", SearchOption.AllDirectories))
             {
                 string rel = FileUtil.Rel(active, f);
@@ -1137,10 +1240,107 @@ namespace Skate3Launcher
         }
     }
 
+    // Shared settings.toml backup/restore helper used by both Benchmarks and Modding tools "Test mod".
+    // Keeps the v3.1.1 ".benchmark-backup" file name and NoFileMarker text so a backup left behind before
+    // an update or crash is still recognized and restored on startup.
+    static class TempConfigBackup
+    {
+        // Marks a backup taken when there was no settings.toml at all, so restoring deletes the file again
+        // (an empty settings.toml would stop the recomp from applying its first-run defaults).
+        public const string NoFileMarker = "# launcher: settings.toml did not exist before the benchmark";
+        public const string UnrestoredError = "Your previous settings haven't been restored yet. Close Skate 3 and try again.";
+
+        public static string BackupPath(string configPath)
+        {
+            return (configPath ?? Paths.Config) + ".benchmark-backup";
+        }
+
+        public static void BackupConfig() { BackupConfig(Paths.Config, MainForm.IsGameRunning); }
+
+        public static void BackupConfig(string configPath) { BackupConfig(configPath, MainForm.IsGameRunning); }
+
+        public static void BackupConfig(string configPath, Func<bool> isGameRunning)
+        {
+            string cfg = configPath ?? Paths.Config;
+            string bak = BackupPath(cfg);
+            if (File.Exists(bak))
+            {
+                if (isGameRunning != null && isGameRunning())
+                    throw new InvalidOperationException(UnrestoredError);
+                RestoreConfig(cfg);
+            }
+            string dir = Path.GetDirectoryName(bak);
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+            if (File.Exists(cfg)) File.Copy(cfg, bak, false);
+            else File.WriteAllText(bak, NoFileMarker + "\n", new UTF8Encoding(false));
+        }
+
+        public static void RestoreConfig() { RestoreConfig(Paths.Config); }
+
+        public static void RestoreConfig(string configPath)
+        {
+            string cfg = configPath ?? Paths.Config;
+            string bak = BackupPath(cfg);
+            if (!File.Exists(bak)) return;
+            byte[] bytes = File.ReadAllBytes(bak);
+            string text = Encoding.UTF8.GetString(bytes);
+            if (text.StartsWith(NoFileMarker, StringComparison.Ordinal) ||
+                text.TrimStart('\uFEFF').StartsWith(NoFileMarker, StringComparison.Ordinal))
+            {
+                if (File.Exists(cfg)) File.Delete(cfg);
+            }
+            else
+            {
+                string dir = Path.GetDirectoryName(cfg);
+                if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                File.Copy(bak, cfg, true);
+            }
+            File.Delete(bak);
+        }
+
+        // If the launcher closed mid-benchmark or mid-test, put the user's real settings back once skate3.exe isn't running.
+        public static bool RecoverConfig()
+        {
+            return RecoverConfig(Paths.Config, MainForm.IsGameRunning);
+        }
+
+        public static bool RecoverConfig(string configPath, Func<bool> isGameRunning)
+        {
+            try
+            {
+                string bak = BackupPath(configPath);
+                if (!File.Exists(bak)) return false;
+                if (isGameRunning != null && isGameRunning()) return false;
+                RestoreConfig(configPath);
+                return true;
+            }
+            catch { return false; }
+        }
+
+        // Remembers which log a benchmark or test-mod session wrote, so the Logs page doesn't report it as a crash.
+        public static void MarkSessionLog(string logsDir, DateTime started)
+        {
+            try
+            {
+                DateTime localStarted = started.Kind == DateTimeKind.Utc ? started.ToLocalTime() : started;
+                var f = LogTools.Files(logsDir).FirstOrDefault(x => x.LastWriteTime >= localStarted.AddSeconds(-2));
+                if (f != null) LauncherPrefs.Write("bench_log", f.Name + "|" + f.LastWriteTimeUtc.Ticks.ToString(CultureInfo.InvariantCulture));
+            }
+            catch { }
+        }
+
+        public static bool IsSessionLog(FileInfo f)
+        {
+            if (f == null) return false;
+            string v = LauncherPrefs.Read("bench_log");
+            return v != null && v == f.Name + "|" + f.LastWriteTimeUtc.Ticks.ToString(CultureInfo.InvariantCulture);
+        }
+    }
+
     static class Benchmarks
     {
         public static string ResultsPath { get { return Path.Combine(Paths.UserDir, "launcher-benchmarks.csv"); } }
-        public static string ConfigBackup { get { return Paths.Config + ".benchmark-backup"; } }
+        public static string ConfigBackup { get { return TempConfigBackup.BackupPath(Paths.Config); } }
 
         public static List<BenchResult> Load()
         {
@@ -1168,35 +1368,12 @@ namespace Skate3Launcher
             File.WriteAllLines(ResultsPath, lines);
         }
 
-        // Marks a backup taken when there was no settings.toml at all, so restoring deletes the file again
-        // (an empty settings.toml would stop the recomp from applying its first-run defaults).
-        const string NoFileMarker = "# launcher: settings.toml did not exist before the benchmark";
+        static void BackupConfig() { TempConfigBackup.BackupConfig(Paths.Config); }
 
-        static void BackupConfig()
-        {
-            if (File.Exists(Paths.Config)) File.Copy(Paths.Config, ConfigBackup, true);
-            else File.WriteAllText(ConfigBackup, NoFileMarker + "\n");
-        }
+        static void RestoreConfig() { TempConfigBackup.RestoreConfig(Paths.Config); }
 
-        static void RestoreConfig()
-        {
-            if (!File.Exists(ConfigBackup)) return;
-            if (File.ReadAllText(ConfigBackup).StartsWith(NoFileMarker)) { if (File.Exists(Paths.Config)) File.Delete(Paths.Config); }
-            else File.Copy(ConfigBackup, Paths.Config, true);
-            File.Delete(ConfigBackup);
-        }
-
-        // If the launcher died mid-benchmark, put the user's real settings back.
-        public static bool RecoverConfig()
-        {
-            try
-            {
-                if (!File.Exists(ConfigBackup) || MainForm.IsGameRunning()) return false;
-                RestoreConfig();
-                return true;
-            }
-            catch { return false; }
-        }
+        // If the launcher died mid-benchmark or mid-test, put the user's real settings back.
+        public static bool RecoverConfig() { return TempConfigBackup.RecoverConfig(); }
 
         static readonly Regex TimeRx = new Regex(@"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d+)\]");
         static readonly Regex CadenceRx = new Regex(@"present-cadence: avg=([\d.]+)ms sd=([\d.]+) jitter=([\d.]+) max=([\d.]+)");
@@ -1315,22 +1492,9 @@ namespace Skate3Launcher
         static double D(Match m, int g) { return double.Parse(m.Groups[g].Value, CultureInfo.InvariantCulture); }
 
         // Remembers which log the benchmark session wrote, so the Logs page doesn't report the launcher closing the game as a crash.
-        static void MarkBenchmarkLog(string logsDir, DateTime started)
-        {
-            try
-            {
-                var f = LogTools.Files(logsDir).FirstOrDefault(x => x.LastWriteTime >= started.AddSeconds(-2));
-                if (f != null) LauncherPrefs.Write("bench_log", f.Name + "|" + f.LastWriteTimeUtc.Ticks.ToString(CultureInfo.InvariantCulture));
-            }
-            catch { }
-        }
+        static void MarkBenchmarkLog(string logsDir, DateTime started) { TempConfigBackup.MarkSessionLog(logsDir, started); }
 
-        public static bool IsBenchmarkLog(FileInfo f)
-        {
-            if (f == null) return false;
-            string v = LauncherPrefs.Read("bench_log");
-            return v != null && v == f.Name + "|" + f.LastWriteTimeUtc.Ticks.ToString(CultureInfo.InvariantCulture);
-        }
+        public static bool IsBenchmarkLog(FileInfo f) { return TempConfigBackup.IsSessionLog(f); }
 
         static string SafeExit(Process p) { try { return "0x" + p.ExitCode.ToString("X8"); } catch { return "?"; } }
 

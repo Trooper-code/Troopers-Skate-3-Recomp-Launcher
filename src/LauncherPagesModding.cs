@@ -295,13 +295,13 @@ namespace Skate3Launcher
         Label newModStatus;
 
         DarkCombo modCheckCombo;
-        PillButton checkModBtn, removeIdenticalBtn, addModJsonBtn, packageZipBtn;
+        PillButton checkModBtn, testModBtn, removeIdenticalBtn, addModJsonBtn, packageZipBtn;
         Label modCheckStatus;
         ModCheckView modCheckView;
         List<ModInfo> moddingModList = new List<ModInfo>();
         List<ModCheckResult> lastCheckResults;
         string lastCheckedModDir;
-        bool modCheckRunning, modCheckCancel, updatingModCheckCombo;
+        bool modCheckRunning, modCheckCancel, updatingModCheckCombo, testModRunning;
 
         RoundTextBox workDirBox, fromChangesNameBox;
         PillButton browseWorkBtn, compareWorkBtn, createFromChangesBtn;
@@ -402,6 +402,7 @@ namespace Skate3Launcher
             var modCap = MkLabel("Mod", Theme.Small, Theme.Muted);
             modCheckCombo = new DarkCombo { Width = D(320) };
             checkModBtn = MkButton("Check mod", "\uE73E", ButtonStyle.Secondary, "Run validator checks on the selected mod.");
+            testModBtn = MkButton("Test mod", "\uE768", ButtonStyle.Secondary, ModTestRunner.ButtonTooltip);
             modCheckStatus = MkLabel("", Theme.Base, Theme.Text);
             modCheckView = new ModCheckView { Visible = false };
             modCheckView.KeyDown += (o, e) =>
@@ -424,17 +425,19 @@ namespace Skate3Launcher
                 RelayoutCurrent();
             };
             checkModBtn.Click += delegate { StartOrCancelModCheck(); };
+            testModBtn.Click += delegate { TestSelectedMod(); };
             removeIdenticalBtn.Click += delegate { RemoveIdenticalModFiles(); };
             addModJsonBtn.Click += delegate { AddModJsonToSelectedMod(); };
             packageZipBtn.Click += delegate { PackageSelectedMod(); };
 
-            checkCard.Controls.AddRange(new Control[] { modCap, modCheckCombo, checkModBtn, modCheckStatus, modCheckView, packageZipBtn, addModJsonBtn, removeIdenticalBtn });
+            checkCard.Controls.AddRange(new Control[] { modCap, modCheckCombo, checkModBtn, testModBtn, modCheckStatus, modCheckView, packageZipBtn, addModJsonBtn, removeIdenticalBtn });
             checkCard.Body = (w, top) =>
             {
                 modCap.Location = new Point(D(20), top);
-                modCheckCombo.SetBounds(D(20), modCap.Bottom + D(4), Math.Min(D(340), Math.Max(D(180), w - checkModBtn.Width - D(52))), D(32));
+                modCheckCombo.SetBounds(D(20), modCap.Bottom + D(4), Math.Min(D(340), Math.Max(D(180), w - checkModBtn.Width - testModBtn.Width - D(60))), D(32));
                 checkModBtn.Location = new Point(modCheckCombo.Right + D(8), modCheckCombo.Top - 2);
-                int y = Math.Max(modCheckCombo.Bottom, checkModBtn.Bottom);
+                testModBtn.Location = new Point(checkModBtn.Right + D(8), modCheckCombo.Top - 2);
+                int y = Math.Max(modCheckCombo.Bottom, Math.Max(checkModBtn.Bottom, testModBtn.Bottom));
                 if (modCheckStatus.Text.Length > 0)
                 {
                     modCheckStatus.MaximumSize = new Size(w - D(40), 0);
@@ -551,7 +554,7 @@ namespace Skate3Launcher
             }
             else
             {
-                modCheckCombo.Enabled = !modCheckRunning;
+                modCheckCombo.Enabled = !modCheckRunning && !testModRunning;
                 modCheckCombo.SelectedIndex = sel >= 0 ? sel : 0;
             }
             updatingModCheckCombo = false;
@@ -575,7 +578,7 @@ namespace Skate3Launcher
                 modCheckView.Results.Clear();
                 modCheckView.Visible = false;
             }
-            if (modCheckStatus != null && !modCheckRunning)
+            if (modCheckStatus != null && !modCheckRunning && !testModRunning)
             {
                 modCheckStatus.Text = moddingModList.Count == 0
                     ? (gameExe == null ? "Set the game location on the Launcher page first." : "Create or install a mod first, then pick it above and press Check mod.")
@@ -597,11 +600,135 @@ namespace Skate3Launcher
                 : (!File.Exists(Path.Combine(sel.Dir, "mod.json")) || string.IsNullOrEmpty(sel.Title) || string.IsNullOrEmpty(sel.Version)));
 
             checkModBtn.Text = modCheckRunning ? "Cancel" : "Check mod";
-            checkModBtn.Enabled = hasMod || modCheckRunning;
-            modCheckCombo.Enabled = moddingModList.Count > 0 && !modCheckRunning;
-            packageZipBtn.Enabled = !modCheckRunning && checkedThisMod && !hasErrors;
-            addModJsonBtn.Enabled = !modCheckRunning && needsModJson;
-            removeIdenticalBtn.Enabled = !modCheckRunning && hasIdentical && !hasErrors;
+            checkModBtn.Enabled = !testModRunning && (hasMod || modCheckRunning);
+            if (testModBtn != null) testModBtn.Enabled = !modCheckRunning && !testModRunning && hasMod && gameExe != null && File.Exists(gameExe);
+            modCheckCombo.Enabled = moddingModList.Count > 0 && !modCheckRunning && !testModRunning;
+            packageZipBtn.Enabled = !modCheckRunning && !testModRunning && checkedThisMod && !hasErrors;
+            addModJsonBtn.Enabled = !modCheckRunning && !testModRunning && needsModJson;
+            removeIdenticalBtn.Enabled = !modCheckRunning && !testModRunning && hasIdentical && !hasErrors;
+        }
+
+        void TestSelectedMod()
+        {
+            if (modCheckRunning || testModRunning) return;
+            var m = SelectedModForCheck();
+            if (m == null) return;
+            if (gameExe == null || !File.Exists(gameExe))
+            {
+                MessageBox.Show(this,
+                    "skate3.exe hasn't been located yet.\n\nGo to the Launcher page and click Browse next to the game path to select your skate3.exe.",
+                    AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            if (IsGameRunning())
+            {
+                if (File.Exists(TempConfigBackup.BackupPath(configPath)))
+                    MessageBox.Show(this, TempConfigBackup.UnrestoredError, AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                else
+                    GameRunningGuard("testing a mod");
+                return;
+            }
+            if (PendingChanges().Count > 0)
+            {
+                int ch = DarkDialog.Ask(this, "Save your changes first?",
+                    "You have unsaved setting changes. Save them before testing, or test with the settings currently on disk?",
+                    "Save and test", "Test without saving", "Cancel");
+                if (ch == 0) SaveSettings(false);
+                else if (ch != 1) return;
+            }
+
+            var allMods = Mods.List(gameExe);
+            ModInfo target = allMods.FirstOrDefault(x => string.Equals(x.Dir, m.Dir, StringComparison.OrdinalIgnoreCase)) ?? Mods.Read(m.Dir);
+            List<string> missingRequires;
+            var modsToTest = ModTestRunner.ResolveModSet(target, allMods, out missingRequires);
+            if (missingRequires.Count > 0)
+            {
+                if (DarkDialog.Ask(this,
+                        "Missing required mod" + (missingRequires.Count == 1 ? "" : "s"),
+                        target.Display + " lists required mod" + (missingRequires.Count == 1 ? "" : "s") +
+                        " in mod.json that aren't installed in mods\\:\n\n  \u2022 " +
+                        string.Join("\n  \u2022 ", missingRequires) +
+                        "\n\nTest " + target.Display + " without " + (missingRequires.Count == 1 ? "it" : "them") + "?",
+                        "Test anyway", "Cancel") != 0)
+                    return;
+            }
+
+            var plan = Mods.Prepare(gameExe, modsToTest);
+            if (plan.Error != null)
+            {
+                MessageBox.Show(this, plan.Error, AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            if (plan.ActiveRoot == null)
+            {
+                string msg = plan.Warnings.Count > 0
+                    ? string.Join("\n\n", plan.Warnings)
+                    : "Couldn't build the test folder for " + target.Display + ". Make sure the mod contains at least one replacement game file.";
+                MessageBox.Show(this, msg, AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            if (!ConfirmModWarnings(plan)) return;
+
+            Process p;
+            try
+            {
+                p = ModTestRunner.StartTestProcess(gameExe, plan, configPath);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message == TempConfigBackup.UnrestoredError
+                    ? ex.Message
+                    : "Couldn't launch skate3.exe for testing:\n\n" + ex.Message,
+                    AppName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            testModRunning = true;
+            if (modCheckStatus != null)
+            {
+                modCheckStatus.Text = "Testing " + target.Display + "…";
+                modCheckStatus.ForeColor = Theme.Accent;
+            }
+            Flash("Testing " + target.Display + "…", Theme.Accent);
+            UpdateRunningState();
+            UpdateModCheckButtons();
+            RelayoutCurrent();
+
+            string exe = gameExe;
+            string cfgPath = configPath;
+            string logsDir = Paths.LogsDir(exe);
+            DateTime started = DateTime.Now;
+
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                try
+                {
+                    if (p != null)
+                    {
+                        try { p.WaitForExit(); } catch { }
+                    }
+                }
+                finally
+                {
+                    ModTestRunner.FinishTestSession(logsDir, started, cfgPath);
+                }
+
+                Ui(delegate
+                {
+                    testModRunning = false;
+                    if (PendingChanges().Count == 0) ReloadFromFile(); else config.Load();
+                    if (!Visible && TrayEnabled) RestoreFromTray();
+                    UpdateRunningState();
+                    if (modCheckStatus != null && !modCheckRunning)
+                    {
+                        modCheckStatus.Text = "Test session finished. Your settings were restored.";
+                        modCheckStatus.ForeColor = Theme.Good;
+                    }
+                    Flash("Test session finished. Your settings were restored.", Theme.Good);
+                    UpdateModCheckButtons();
+                    RelayoutCurrent();
+                });
+            });
         }
 
         void StartOrCancelModCheck()

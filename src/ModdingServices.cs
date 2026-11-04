@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.IO.Compression;
@@ -1294,6 +1295,117 @@ namespace Skate3Launcher
             }
 
             return dest;
+        }
+    }
+
+    // ====================================================================== M4: test a mod (quick launch)
+
+    static class ModTestRunner
+    {
+        public const string ButtonTooltip = "Boots straight to gameplay with only this mod (and any mods it requires). Tests boot signed out, so your career saves aren't used, and settings.toml is restored when you close the game.";
+
+        // Resolves targetMod plus every mod in its 'requires' chain (works for disabled mods too).
+        // Any required mod name that isn't installed in allMods is added to missingRequires.
+        public static List<ModInfo> ResolveModSet(ModInfo targetMod, IList<ModInfo> allMods, out List<string> missingRequires)
+        {
+            missingRequires = new List<string>();
+            var result = new List<ModInfo>();
+            if (targetMod == null) return result;
+
+            var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var missing = new List<string>();
+            VisitModAndRequires(targetMod, allMods, visited, result, missing);
+            missingRequires = missing;
+            return result;
+        }
+
+        static void VisitModAndRequires(ModInfo current, IList<ModInfo> allMods, HashSet<string> visited, List<ModInfo> ordered, List<string> missing)
+        {
+            if (current == null) return;
+            string key = !string.IsNullOrEmpty(current.Name) ? current.Name : (current.Dir ?? "");
+            if (key.Length == 0 || !visited.Add(key)) return;
+
+            if (current.Requires != null)
+            {
+                foreach (var rawReq in current.Requires)
+                {
+                    string req = (rawReq ?? "").Trim();
+                    if (req.Length == 0) continue;
+                    var dep = ModManifest.FindMod(allMods, req);
+                    if (dep == null)
+                    {
+                        if (!missing.Contains(req, StringComparer.OrdinalIgnoreCase))
+                            missing.Add(req);
+                    }
+                    else
+                    {
+                        VisitModAndRequires(dep, allMods, visited, ordered, missing);
+                    }
+                }
+            }
+
+            ordered.Add(current);
+        }
+
+        // Demo-path cvars from skate3recomp/src/skate3_demo_path.cpp:
+        // - skate3_demo_path (lines 28-29)
+        // - skate3_demo_path_signed_in (lines 32-34)
+        // - skate3_intro_movie_skip (lines 48-50)
+        public static Dictionary<string, string> DemoPathOverrides()
+        {
+            return new Dictionary<string, string>
+            {
+                { "skate3_demo_path", "true" },
+                { "skate3_demo_path_signed_in", "false" },
+                { "skate3_intro_movie_skip", "true" }
+            };
+        }
+
+        // Backs up settings.toml with TempConfigBackup and writes the demo-path boot cvars.
+        public static void ApplyTestConfig(string configPath)
+        {
+            string cfgPath = configPath ?? Paths.Config;
+            TempConfigBackup.BackupConfig(cfgPath);
+            try
+            {
+                var cfg = new ConfigFile(cfgPath);
+                cfg.Load();
+                cfg.Save(DemoPathOverrides());
+                Mods.ScrubConfig(cfgPath);
+            }
+            catch
+            {
+                try { TempConfigBackup.RestoreConfig(cfgPath); } catch { }
+                throw;
+            }
+        }
+
+        public static Process StartTestProcess(string gameExe, ModPlan plan, string configPath)
+        {
+            if (plan == null) throw new InvalidOperationException("No mod plan prepared.");
+            if (plan.Error != null) throw new InvalidOperationException(plan.Error);
+            if (string.IsNullOrEmpty(plan.ActiveRoot))
+                throw new InvalidOperationException("Modded game folder wasn't prepared.");
+
+            string cfgPath = configPath ?? Paths.Config;
+            ApplyTestConfig(cfgPath);
+            try
+            {
+                Process p = GameLaunch.Start(gameExe, plan);
+                if (p == null) throw new InvalidOperationException("The game didn't start.");
+                return p;
+            }
+            catch
+            {
+                try { TempConfigBackup.RestoreConfig(cfgPath); } catch { }
+                throw;
+            }
+        }
+
+        public static void FinishTestSession(string logsDir, DateTime started, string configPath)
+        {
+            TempConfigBackup.MarkSessionLog(logsDir, started);
+            try { TempConfigBackup.RestoreConfig(configPath ?? Paths.Config); } catch { }
         }
     }
 }

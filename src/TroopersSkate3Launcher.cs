@@ -2356,8 +2356,30 @@ namespace Skate3Launcher
         string ReadPref(string key) { return LauncherPrefs.Read(key); }
         void WritePref(string key, string value) { LauncherPrefs.Write(key, value); }
 
+        internal bool ShouldBlockCloseForTestSession(CloseReason reason, Func<bool> isGameRunning, Func<int> askChoice, Action hideToTray)
+        {
+            if (reason != CloseReason.UserClosing || (!testModRunning && !benchBusy)) return false;
+            if (isGameRunning == null || !isGameRunning()) return false;
+            int ch = askChoice();
+            if (ch == 1)
+            {
+                try { TempConfigBackup.RestoreConfig(configPath); } catch { }
+                return false;
+            }
+            if (ch == 0 && TrayEnabled && hideToTray != null) hideToTray();
+            return true;
+        }
+
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
+            if (ShouldBlockCloseForTestSession(e.CloseReason, IsGameRunning, () => DarkDialog.Ask(this,
+                    testModRunning ? "A mod test is still running" : "A benchmark is still running",
+                    "Your settings.toml is in test mode until the game closes. Keep the launcher open so it can put your settings back, or restore them now (the game may rewrite them when it exits).",
+                    "Keep open", "Close anyway", "Cancel"), HideToTray))
+            {
+                e.Cancel = true;
+                return;
+            }
             if (e.CloseReason == CloseReason.UserClosing && !IsGameRunning() && PendingChanges().Count > 0)
             {
                 var r = MessageBox.Show(this, "Save your changes before closing?", AppName, MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
