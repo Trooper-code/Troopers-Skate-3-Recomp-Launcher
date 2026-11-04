@@ -74,3 +74,11 @@ On the **Modding tools** page (**Check and package a mod**), **Check mod** valid
 - **Info:** missing `mod.json` or missing `name`/`version` (**Add mod.json** fills them in), and missing preview image.
 
 **Package as .zip** writes `<Name>-<version>.zip` to your Desktop with a single top-level folder named after the mod containing `mod.json`, any preview/readme files, and the mod's game files, ready to install via **Install from .zip…** or by dragging the `.zip` onto the **Mods** page.
+
+## Making a mod from changed files
+
+If you edit a separate copy of the `game\` folder directly, use **Modding tools → Create a mod from changed files**:
+
+1. Pick your edited work folder and press **Compare**. The launcher compares every file against your clean `game\` folder (by file size first, then SHA-256 for same-size files), skipping links/junctions and protected executables (`default.xex`, `default.xexp`, `data/webkit/EAWebkit.xex`, `data/webkit/EAWebkit.xexp`).
+2. Review the checklist of **Changed** and **New** files (all ticked by default) and enter a mod name.
+3. Press **Create mod** to copy only the ticked files into `mods\<name>\` with a format-1 `mod.json` and run **Check mod** on the new mod automatically. Neither your work folder nor `game\` is modified.

@@ -231,17 +231,8 @@ namespace Skate3Launcher
             return null;
         }
 
-        public static string Create(string gameExe, string rawName)
+        public static string Format1ModJson(string name)
         {
-            string name;
-            string err = ValidateName(gameExe, rawName, out name);
-            if (err != null) throw new InvalidOperationException(err);
-
-            string modsDir = Mods.Dir(gameExe);
-            string modDir = Path.Combine(modsDir, name);
-            Directory.CreateDirectory(modDir);
-            Directory.CreateDirectory(Path.Combine(modDir, "data"));
-
             var json = new StringBuilder();
             json.AppendLine("{");
             json.AppendLine("  \"format\": 1,");
@@ -255,7 +246,21 @@ namespace Skate3Launcher
             json.AppendLine("  \"requires\": [],");
             json.AppendLine("  \"conflicts\": []");
             json.AppendLine("}");
-            File.WriteAllText(Path.Combine(modDir, "mod.json"), json.ToString(), new UTF8Encoding(false));
+            return json.ToString();
+        }
+
+        public static string Create(string gameExe, string rawName)
+        {
+            string name;
+            string err = ValidateName(gameExe, rawName, out name);
+            if (err != null) throw new InvalidOperationException(err);
+
+            string modsDir = Mods.Dir(gameExe);
+            string modDir = Path.Combine(modsDir, name);
+            Directory.CreateDirectory(modDir);
+            Directory.CreateDirectory(Path.Combine(modDir, "data"));
+
+            File.WriteAllText(Path.Combine(modDir, "mod.json"), Format1ModJson(name), new UTF8Encoding(false));
 
             var readme = new StringBuilder();
             readme.AppendLine(name);
@@ -780,7 +785,7 @@ namespace Skate3Launcher
             return jsonPath;
         }
 
-        static bool HasReparsePoint(string path)
+        public static bool HasReparsePoint(string path)
         {
             try
             {
@@ -790,14 +795,14 @@ namespace Skate3Launcher
             catch { return true; }
         }
 
-        static void EnsureNoReparsePointInChain(string filePath, string modDir)
+        public static void EnsureNoReparsePointInChain(string filePath, string modDir)
         {
             string stop = Path.GetFullPath(modDir).TrimEnd('\\', '/');
             string cur = Path.GetFullPath(filePath).TrimEnd('\\', '/');
             while (!string.IsNullOrEmpty(cur))
             {
                 if (HasReparsePoint(cur))
-                    throw new InvalidOperationException("Refusing to delete files because the mod folder contains a link or junction: " + cur);
+                    throw new InvalidOperationException("Refusing to use or delete files when the folder contains a link or junction: " + cur);
                 if (string.Equals(cur, stop, StringComparison.OrdinalIgnoreCase))
                     return;
                 string parent = Path.GetDirectoryName(cur);
@@ -805,7 +810,7 @@ namespace Skate3Launcher
                     break;
                 cur = parent.TrimEnd('\\', '/');
             }
-            throw new InvalidOperationException("Refusing to delete a file outside the mod folder: " + filePath);
+            throw new InvalidOperationException("Path is outside the expected folder: " + filePath);
         }
 
         // Deletes identical files inside the mod's own folder only. Never touches game\, mods\skate2 or mods\.active-game.
@@ -953,7 +958,7 @@ namespace Skate3Launcher
             return zipPath;
         }
 
-        static bool IsInDotFolder(string relPath)
+        public static bool IsInDotFolder(string relPath)
         {
             if (string.IsNullOrEmpty(relPath)) return false;
             var parts = relPath.Split('/', '\\');
@@ -962,11 +967,333 @@ namespace Skate3Launcher
             return false;
         }
 
-        static bool IsIgnoredPackageFile(string fileName)
+        public static bool IsIgnoredPackageFile(string fileName)
         {
             if (string.IsNullOrEmpty(fileName)) return true;
             string n = fileName.ToLowerInvariant();
             return n == ".base" || n == "thumbs.db" || n == "desktop.ini" || n == ".ds_store" || n.EndsWith(".tmp-launcher");
+        }
+
+        public static bool IsRootMetadataFile(string fileName)
+        {
+            if (string.IsNullOrEmpty(fileName)) return false;
+            string n = fileName.ToLowerInvariant();
+            return n == "mod.json" || n == "readme.txt" || n == "readme.md" || n.StartsWith("preview.", StringComparison.Ordinal);
+        }
+    }
+
+    // ====================================================================== M3: create a mod from changed files
+
+    enum ModChangeStatus
+    {
+        Changed,
+        New,
+        Unchanged,
+        Skipped
+    }
+
+    class ModChangeEntry
+    {
+        public string RelativePath; // '/' separators
+        public string FullPath;     // full path inside workDir
+        public ModChangeStatus Status;
+        public long Size;
+        public string SkipReason;   // non-null when Status == Skipped
+    }
+
+    static class ModFromChanges
+    {
+        public const int LargeSelectionFileWarningCount = 50;
+        public const long LargeSelectionBytesWarning = 500L * 1024 * 1024;
+
+        // Validates a work folder against the active Skate 3 install.
+        // Returns a plain error message when invalid, or null when valid.
+        // If the folder isn't itself a game\ copy but has a game\ subfolder holding default.xex, sets suggestedSubfolder.
+        public static string ValidateWorkDir(string workDir, string gameExe, out string suggestedSubfolder)
+        {
+            suggestedSubfolder = null;
+            if (string.IsNullOrEmpty(gameExe))
+                return "Set the game location on the Launcher page first.";
+            if (string.IsNullOrEmpty(workDir) || !Directory.Exists(workDir))
+                return "Choose an existing work folder first.";
+
+            string workFull;
+            try { workFull = Path.GetFullPath(workDir); }
+            catch { return "That work folder path is not valid."; }
+
+            string exeDir = Path.GetFullPath(Path.GetDirectoryName(Path.GetFullPath(gameExe)));
+            string gameDir = Path.GetFullPath(FileUtil.GameRoot(gameExe));
+            string modsDir = Path.GetFullPath(Mods.Dir(gameExe));
+
+            if (Mods.SameOrInside(gameDir, workFull))
+                return "That's the game's own game\\ folder, not a separate work copy. Copy game\\ to another folder first and edit the copy.";
+            if (Mods.SameOrInside(modsDir, workFull))
+                return "That folder is inside mods\\. Pick a separate copy of the game\\ folder.";
+            if (Mods.SameOrInside(workFull, gameDir) || Mods.SameOrInside(workFull, modsDir) || Mods.SameOrInside(workFull, exeDir))
+                return "That's the game's own folder, not a separate work copy. Copy game\\ to another folder first and edit the copy.";
+            if (ModValidator.HasReparsePoint(workFull))
+                return "That work folder is a link or junction. Pick a real folder copy instead.";
+
+            bool looksLikeGameCopy = File.Exists(Path.Combine(workFull, "default.xex")) || Directory.Exists(Path.Combine(workFull, "data"));
+            string subGame = Path.Combine(workFull, "game");
+            if (!looksLikeGameCopy && Directory.Exists(subGame) && !ModValidator.HasReparsePoint(subGame) && File.Exists(Path.Combine(subGame, "default.xex")))
+                suggestedSubfolder = subGame;
+
+            return null;
+        }
+
+        public static List<ModChangeEntry> Compare(string workDir, string gameExe)
+        {
+            return Compare(workDir, gameExe, null, null);
+        }
+
+        public static List<ModChangeEntry> Compare(string workDir, string gameExe, Action<long, long, string> progress, Func<bool> cancelled)
+        {
+            string suggested;
+            string err = ValidateWorkDir(workDir, gameExe, out suggested);
+            if (err != null) throw new InvalidOperationException(err);
+
+            string workFull = Path.GetFullPath(workDir);
+            string gameRoot = Path.GetFullPath(FileUtil.GameRoot(gameExe));
+            if (!Directory.Exists(gameRoot))
+                throw new InvalidOperationException("The game\\ folder was not found next to skate3.exe.");
+
+            var entries = new List<ModChangeEntry>();
+            var toHash = new List<ModChangeEntry>();
+            long totalHashBytes = 0, doneHashBytes = 0;
+
+            WalkWorkDirectory(new DirectoryInfo(workFull), workFull, gameRoot, entries, toHash, ref totalHashBytes, cancelled);
+
+            foreach (var item in toHash)
+            {
+                if (cancelled != null && cancelled()) throw new OperationCanceledException();
+
+                string currentRel = item.RelativePath;
+                string workFile = item.FullPath;
+                string gameFile = Path.Combine(gameRoot, currentRel.Replace('/', '\\'));
+
+                long beforeWork = doneHashBytes;
+                string workHash = FileUtil.Sha256(workFile, cancelled, n =>
+                {
+                    doneHashBytes += n;
+                    if (progress != null) progress(doneHashBytes, totalHashBytes, currentRel);
+                });
+                doneHashBytes = beforeWork + item.Size;
+
+                long beforeGame = doneHashBytes;
+                string gameHash = FileUtil.Sha256(gameFile, cancelled, n =>
+                {
+                    doneHashBytes += n;
+                    if (progress != null) progress(doneHashBytes, totalHashBytes, currentRel);
+                });
+                doneHashBytes = beforeGame + item.Size;
+
+                item.Status = string.Equals(workHash, gameHash, StringComparison.OrdinalIgnoreCase)
+                    ? ModChangeStatus.Unchanged
+                    : ModChangeStatus.Changed;
+            }
+
+            return entries;
+        }
+
+        static void WalkWorkDirectory(DirectoryInfo dir, string workRoot, string gameRoot,
+            List<ModChangeEntry> entries, List<ModChangeEntry> toHash, ref long totalHashBytes, Func<bool> cancelled)
+        {
+            if (cancelled != null && cancelled()) throw new OperationCanceledException();
+
+            DirectoryInfo[] subDirs;
+            try
+            {
+                subDirs = dir.GetDirectories("*", SearchOption.TopDirectoryOnly)
+                    .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase).ToArray();
+            }
+            catch (Exception ex)
+            {
+                throw new IOException("Couldn't read directory \"" + dir.FullName + "\": " + ex.Message, ex);
+            }
+
+            FileInfo[] files;
+            try
+            {
+                files = dir.GetFiles("*", SearchOption.TopDirectoryOnly)
+                    .OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase).ToArray();
+            }
+            catch (Exception ex)
+            {
+                throw new IOException("Couldn't read files in \"" + dir.FullName + "\": " + ex.Message, ex);
+            }
+
+            foreach (var f in files)
+            {
+                if (cancelled != null && cancelled()) throw new OperationCanceledException();
+                if (ModPackager.IsIgnoredPackageFile(f.Name)) continue;
+                string rel = FileUtil.Rel(workRoot, f.FullName);
+                if (!rel.Contains('/') && ModPackager.IsRootMetadataFile(f.Name)) continue;
+                if ((f.Attributes & FileAttributes.ReparsePoint) != 0 || ModValidator.HasReparsePoint(f.FullName))
+                {
+                    entries.Add(new ModChangeEntry
+                    {
+                        RelativePath = rel,
+                        FullPath = f.FullName,
+                        Status = ModChangeStatus.Skipped,
+                        Size = 0,
+                        SkipReason = "link / junction skipped"
+                    });
+                    continue;
+                }
+                if (GameFiles.Protected.Contains(rel.ToLowerInvariant()))
+                {
+                    entries.Add(new ModChangeEntry
+                    {
+                        RelativePath = rel,
+                        FullPath = f.FullName,
+                        Status = ModChangeStatus.Skipped,
+                        Size = f.Length,
+                        SkipReason = "can't be modded"
+                    });
+                    continue;
+                }
+
+                string gameFile = Path.Combine(gameRoot, rel.Replace('/', '\\'));
+                if (!File.Exists(gameFile))
+                {
+                    entries.Add(new ModChangeEntry
+                    {
+                        RelativePath = rel,
+                        FullPath = f.FullName,
+                        Status = ModChangeStatus.New,
+                        Size = f.Length
+                    });
+                }
+                else
+                {
+                    long gameLen = new FileInfo(gameFile).Length;
+                    if (f.Length != gameLen)
+                    {
+                        entries.Add(new ModChangeEntry
+                        {
+                            RelativePath = rel,
+                            FullPath = f.FullName,
+                            Status = ModChangeStatus.Changed,
+                            Size = f.Length
+                        });
+                    }
+                    else
+                    {
+                        var entry = new ModChangeEntry
+                        {
+                            RelativePath = rel,
+                            FullPath = f.FullName,
+                            Status = ModChangeStatus.Unchanged,
+                            Size = f.Length
+                        };
+                        entries.Add(entry);
+                        toHash.Add(entry);
+                        totalHashBytes += f.Length * 2;
+                    }
+                }
+            }
+
+            foreach (var sub in subDirs)
+            {
+                if (cancelled != null && cancelled()) throw new OperationCanceledException();
+                if (ModPackager.IsInDotFolder(sub.Name + "/x")) continue;
+                string relDir = FileUtil.Rel(workRoot, sub.FullName);
+                if ((sub.Attributes & FileAttributes.ReparsePoint) != 0 || ModValidator.HasReparsePoint(sub.FullName))
+                {
+                    entries.Add(new ModChangeEntry
+                    {
+                        RelativePath = relDir,
+                        FullPath = sub.FullName,
+                        Status = ModChangeStatus.Skipped,
+                        Size = 0,
+                        SkipReason = "link / junction skipped"
+                    });
+                    continue;
+                }
+                WalkWorkDirectory(sub, workRoot, gameRoot, entries, toHash, ref totalHashBytes, cancelled);
+            }
+        }
+
+        // Copies only the selected relative paths from workDir into mods\<modName>\ with a format-1 mod.json.
+        // Uses a temporary staging folder under mods\ so a failed copy leaves nothing half-made.
+        public static string Create(string gameExe, string workDir, string modName, IEnumerable<string> selectedRelPaths)
+        {
+            return Create(gameExe, workDir, modName, selectedRelPaths, null);
+        }
+
+        public static string Create(string gameExe, string workDir, string modName, IEnumerable<string> selectedRelPaths, Action<int, int, string> progress)
+        {
+            string suggested;
+            string workErr = ValidateWorkDir(workDir, gameExe, out suggested);
+            if (workErr != null) throw new InvalidOperationException(workErr);
+
+            string cleanName;
+            string nameErr = ModCreator.ValidateName(gameExe, modName, out cleanName);
+            if (nameErr != null) throw new InvalidOperationException(nameErr);
+
+            if (selectedRelPaths == null)
+                throw new InvalidOperationException("Tick at least one changed or new file to include in the mod.");
+
+            string workFull = Path.GetFullPath(workDir);
+            var cleanRels = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var rawRel in selectedRelPaths)
+            {
+                if (string.IsNullOrEmpty(rawRel)) continue;
+                string rel = rawRel.Trim().Replace('\\', '/').TrimStart('/');
+                if (rel.Length == 0 || !seen.Add(rel)) continue;
+
+                string why;
+                if (!ModValidator.IsSafeRelativePath(workFull, rel, out why))
+                    throw new InvalidOperationException(why);
+                if (GameFiles.Protected.Contains(rel.ToLowerInvariant()))
+                    throw new InvalidOperationException(rel + " is a protected executable and can't be modded.");
+
+                string srcFile = Path.GetFullPath(Path.Combine(workFull, rel.Replace('/', '\\')));
+                if (!FileUtil.Inside(workFull, srcFile) || !File.Exists(srcFile))
+                    throw new FileNotFoundException("Selected file does not exist in the work folder: " + rel);
+
+                ModValidator.EnsureNoReparsePointInChain(srcFile, workFull);
+                cleanRels.Add(rel);
+            }
+
+            if (cleanRels.Count == 0)
+                throw new InvalidOperationException("Tick at least one changed or new file to include in the mod.");
+
+            string modsDir = Mods.Dir(gameExe);
+            Directory.CreateDirectory(modsDir);
+            string dest = Path.Combine(modsDir, cleanName);
+            if (Directory.Exists(dest) || File.Exists(dest))
+                throw new InvalidOperationException("A mod folder named \"" + cleanName + "\" already exists.");
+
+            string tmp = Path.Combine(modsDir, "_creating-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                Directory.CreateDirectory(tmp);
+                for (int i = 0; i < cleanRels.Count; i++)
+                {
+                    string rel = cleanRels[i];
+                    if (progress != null) progress(i + 1, cleanRels.Count, rel);
+                    string srcFile = Path.Combine(workFull, rel.Replace('/', '\\'));
+                    string dstFile = Path.Combine(tmp, rel.Replace('/', '\\'));
+                    if (!FileUtil.Inside(tmp, dstFile))
+                        throw new InvalidOperationException("Invalid destination path: " + rel);
+                    Directory.CreateDirectory(Path.GetDirectoryName(dstFile));
+                    File.Copy(srcFile, dstFile, true);
+                }
+
+                File.WriteAllText(Path.Combine(tmp, "mod.json"), ModCreator.Format1ModJson(cleanName), new UTF8Encoding(false));
+                Directory.Move(tmp, dest);
+            }
+            catch
+            {
+                FileUtil.TryDeleteDir(tmp);
+                throw;
+            }
+
+            return dest;
         }
     }
 }
