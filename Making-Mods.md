@@ -64,7 +64,20 @@ Turn on **Launcher → Modding tools → Show modding tools** and restart the la
 
 - **Start a new mod:** type a name and press **Create mod folder**. It creates `mods\<name>\` with a format-1 `mod.json`, an empty `data\` folder and a `README.txt`, then opens the folder in Explorer.
 
-More tools are on the way: a mod checker and **Package as .zip**, creating a mod from the files you changed, quick test launches, a log of which files the game actually reads, and an archive browser for the game's `.big` files. See [[Roadmap]].
+- **Check and package a mod:** pick a mod and press **Check mod**. The launcher checks every file (hashing runs in the background, with **Cancel**) and lists what it finds:
+
+  | | What it means |
+  |---|---|
+  | ✖ **Error** | No usable game files; a protected file (`default.xex`, `default.xexp`, the EAWebkit files); a link or junction inside the mod; or a path that escapes the mod folder or uses names Windows can't store. **Errors block packaging.** |
+  | ⚠ **Warning** | A whole original game archive over 20 MB (ship only what you changed); a file identical to the original in `game\` (it does nothing); a PS3 file such as `.psg`; or a new file that doesn't exist in `game\` (probably a wrong path). |
+  | ℹ **Info** | No `mod.json`, or one without `name`/`version`; no preview image. |
+
+  Then fix things with the buttons underneath:
+  - **Remove identical files** deletes the do-nothing copies, after asking. It only ever deletes inside that mod's folder, and it's greyed out while there are errors.
+  - **Add mod.json** writes a format-1 `mod.json`, or fills in a missing name and version without losing what's there.
+  - **Package as .zip** writes `<Name>-<version>.zip` to your Desktop with one top-level folder inside, ready to share. It skips junk like `Thumbs.db`, `desktop.ini` and `.git`, and asks before overwriting.
+
+More tools are on the way: creating a mod from the files you changed, quick test launches, a log of which files the game actually reads, and an archive browser for the game's `.big` files. See [[Roadmap]].
 
 ## Skate 3 Recompiled+
 
@@ -72,6 +85,7 @@ More tools are on the way: a mod checker and **Package as .zip**, creating a mod
 
 ## Sharing mods
 
+- **Run Check mod first.** It catches the common mistakes below, and **Package as .zip** builds the zip the right way for you.
 - **Ship only the files you changed.** Don't include whole game archives you didn't modify: that's sharing EA's files, and it makes the mod huge.
-- Zip the mod with **one top-level folder** named after the mod, so **Install from .zip…** picks it up cleanly.
+- If you zip it yourself, use **one top-level folder** named after the mod, so **Install from .zip…** (or dragging the zip onto the Mods page) picks it up cleanly.
 - Fill in `name`, `version` and `author` in `mod.json`, and add a `preview.png`.

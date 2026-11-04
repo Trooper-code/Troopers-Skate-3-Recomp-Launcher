@@ -28,4 +28,4 @@ The first public release (the version number continues from private builds).
 
 ## In development
 
-- **Modding tools** (behind **Launcher → Show modding tools**): `mod.json` format 1 with previews, compatibility and dependency warnings, Skate 3 Recompiled+ detection, and **Start a new mod**. See [[Making Mods]].
+- **Modding tools** (behind **Launcher → Show modding tools**): `mod.json` format 1 with previews, compatibility and dependency warnings, Skate 3 Recompiled+ detection, **Start a new mod**, a mod checker with **Package as .zip**, and drag-and-drop installs on the Mods page. See [[Making Mods]].
