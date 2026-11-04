@@ -77,7 +77,14 @@ Turn on **Launcher → Modding tools → Show modding tools** and restart the la
   - **Add mod.json** writes a format-1 `mod.json`, or fills in a missing name and version without losing what's there.
   - **Package as .zip** writes `<Name>-<version>.zip` to your Desktop with one top-level folder inside, ready to share. It skips junk like `Thumbs.db`, `desktop.ini` and `.git`, and asks before overwriting.
 
-More tools are on the way: creating a mod from the files you changed, quick test launches, a log of which files the game actually reads, and an archive browser for the game's `.big` files. See [[Roadmap]].
+- **Create a mod from changed files:** for when you edit a copy of the game folder directly. Copy `game\` somewhere else, edit the copy, then pick that copy as the **work folder**, type a mod name and press **Compare**. The launcher compares every file with your real `game\` folder (in the background, with **Cancel**) and lists what's **changed** and **new**, all ticked. Untick anything you don't want and press **Create mod**. It copies only the ticked files into `mods\<name>\` at the right paths, adds a `mod.json`, and runs **Check mod** on the result.
+  - It never changes the work folder or `game\`.
+  - It refuses the real `game\` folder, the `mods` folder and the recomp folder itself. If you pick a copy of the whole recomp folder, it offers to use the `game\` folder inside it.
+  - It skips links and junctions, the protected `default.xex` and EAWebkit files, and junk like `Thumbs.db` and `.git`.
+  - Unchanged files are left out, and you're warned before creating a mod with more than 50 files or 500 MB.
+  - New mods start disabled. Turn them on from the [[Mods]] page.
+
+More tools are on the way: quick test launches, a log of which files the game actually reads, and an archive browser for the game's `.big` files. See [[Roadmap]].
 
 ## Skate 3 Recompiled+
 
