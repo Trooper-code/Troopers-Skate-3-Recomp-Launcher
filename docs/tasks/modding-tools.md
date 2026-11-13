@@ -153,6 +153,8 @@ The foundation for texture packs. **Read-only**: nothing in this milestone write
 
 ### Format facts (all integers big-endian)
 
+> These facts have now been checked against every retail archive. Two of them were wrong and are corrected below; the full verified layout is in [`research.md`](../../research.md), which wins if the two ever disagree.
+
 These were checked against the retail archives by the Recompiled+ fork's tools. **Verify each one against real files** (Josh's game folder) with a test harness before building UI on it.
 
 **EB3 header**, 48 bytes from offset 0:
@@ -182,7 +184,7 @@ Reject anything else (other families, non-zero reserved, size mismatch) with a c
 
 Stored size = `stored_compressed != 0 ? stored_compressed : length`. Validate `offset >= names_at + names_size` and `offset + stored <= file length`.
 
-**Storage-mode bytes**: one byte per file at `align16(48 + count * 16)`: 0 = raw, 1 = RefPack, 2–4 = chunked, anything else = no data. Retail archives write zeros here. (This is how the game reads it, per the fork's notes; the reader can use it as a cross-check, and the writer in M7 must write it.)
+**Storage-mode bytes**: one byte per file at `align16(48 + count * 16)`: 0 = raw, 1 = RefPack, 2–4 = chunked, anything else = no data. **Corrected after checking retail files:** retail archives fill these bytes in (0 = raw, 1 = RefPack, 2 = chunkref), and they agree with the stored-size field on every entry. The reader should use them to decide how to decode, and the writer in M7 must write them. See [`research.md`](../../research.md).
 
 **Names table** at `names_at`: `count` slots of `name_width` bytes. Each slot: a 2-byte directory index, then the file name, NUL-terminated.
 
@@ -196,7 +198,7 @@ Stored size = `stored_compressed != 0 ? stored_compressed : length`. Validate `o
 
 **Compressed entries:**
 - **RefPack** (EA's LZ-style compression) starts with bytes `10 FB`. It's publicly documented (search "RefPack" / "QFS compression"). Implement the decoder from a public description, and cite it in the PR.
-- **chunkref**: starts with the ASCII `chunkref`, then five u32: `version` (2), `expanded size`, `block size` (`0x20000`), `chunk count`, `record width` (16). Then `chunk count` records of 16 bytes from offset 32; in each record, the u32 at +8 is the chunk's stored size and the u32 at +12 its codec (2 = RefPack). Chunk data starts at `32 + 16 * count`, back to back; each chunk is RefPack-compressed and the decoded chunks joined must equal `expanded size`.
+- **chunkref** (**corrected after checking retail files**): starts with the ASCII `chunkref`, then five u32: `version` (2), `expanded size`, `block size` (`0x20000`), `chunk count`, `alignment` (16). The chunks are **interleaved with their headers**: start with a position of 28; for each chunk, its data starts at `align(position + 8, alignment)`, the 8 bytes just before the data are the chunk's stored size (u32) and method (u32: 2 = RefPack, 4 = raw), and the next chunk's position is the end of this chunk's data. The decoded chunks joined must equal `expanded size`. (The earlier description, a table of records at offset 32 with the data after it, only works for single-chunk entries and fails on all 3,772 multi-chunk entries in retail.) See [`research.md`](../../research.md).
 
 ### What to build
 
