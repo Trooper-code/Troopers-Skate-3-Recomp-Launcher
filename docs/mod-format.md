@@ -82,3 +82,7 @@ If you edit a separate copy of the `game\` folder directly, use **Modding tools 
 1. Pick your edited work folder and press **Compare**. The launcher compares every file against your clean `game\` folder (by file size first, then SHA-256 for same-size files), skipping links/junctions and protected executables (`default.xex`, `default.xexp`, `data/webkit/EAWebkit.xex`, `data/webkit/EAWebkit.xexp`).
 2. Review the checklist of **Changed** and **New** files (all ticked by default) and enter a mod name.
 3. Press **Create mod** to copy only the ticked files into `mods\<name>\` with a format-1 `mod.json` and run **Check mod** on the new mod automatically. Neither your work folder nor `game\` is modified.
+
+## Testing a mod
+
+On the **Modding tools** page (**Check and package a mod**), **Test mod** builds `mods\.active-game` with only the selected mod (and any installed mods listed in its `requires`, even if the mod is disabled on the Mods page), backs up `settings.toml`, temporarily enables the recomp's demo path (`skate3_demo_path = true`, `skate3_demo_path_signed_in = false`, `skate3_intro_movie_skip = true`) to skip the intro movie and title menus, and launches the game signed out so career saves aren't used. When you close the game, your original `settings.toml` is restored byte-for-byte, the session log is marked so the Logs page doesn't treat it as a crash, and the next normal **PLAY** rebuilds `mods\.active-game` with your usual enabled mods.
