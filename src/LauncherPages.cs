@@ -1260,6 +1260,7 @@ namespace Skate3Launcher
         DarkCombo winGpuBox;
         RoundTextBox repoBox, discordId, discordImage;
         string installedVersion;
+        bool loadingPref;
 
         void BuildLauncherPage()
         {
@@ -1303,7 +1304,7 @@ namespace Skate3Launcher
                 "(for Vulkan, use \"Graphics card (Vulkan)\" on the Audio & System page). Applies immediately.");
             winGpuBox = new DarkCombo { Width = D(300) };
             winGpuBox.Items.AddRange(new object[] { "Let Windows decide", "Power saving (integrated GPU)", "High performance (dedicated GPU)" });
-            bool loadingPref = true;
+            loadingPref = true;
             winGpuBox.SelectedIndex = gameExe != null ? Math.Max(0, Math.Min(2, GpuInfo.WindowsPreference(gameExe))) : 0;
             loadingPref = false;
             winGpuBox.SelectedIndexChanged += delegate
@@ -1429,7 +1430,12 @@ namespace Skate3Launcher
             if (gameExe != null)
             {
                 int pref = Math.Max(0, Math.Min(2, GpuInfo.WindowsPreference(gameExe)));
-                if (winGpuBox.SelectedIndex != pref) winGpuBox.SelectedIndex = pref;
+                if (winGpuBox.SelectedIndex != pref)
+                {
+                    loadingPref = true;
+                    try { winGpuBox.SelectedIndex = pref; }
+                    finally { loadingPref = false; }
+                }
             }
             ApplyUpdateResult(null);
             if (currentPage != null) currentPage.Page.Relayout();

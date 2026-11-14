@@ -87,6 +87,13 @@ namespace Skate3Launcher
         {
             try { if (Directory.Exists(dir)) Directory.Delete(dir, true); } catch { }
         }
+
+        public static ZipArchive OpenZip(string path)
+        {
+            var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            try { return new ZipArchive(fs, ZipArchiveMode.Read, false); }
+            catch { fs.Dispose(); throw; }
+        }
     }
 
     // Tiny JSON reader for GitHub API replies: objects become Dictionary<string, object>, arrays List<object>,
@@ -347,7 +354,7 @@ namespace Skate3Launcher
             string stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
             string backupDir = Path.Combine(installDir, BackupFolder, stamp + "-v" + Paths.SafeName((fromVersion ?? "unknown").TrimStart('v')));
             var manifest = new List<string>();
-            using (var zip = new ZipArchive(new FileStream(zipPath, FileMode.Open, FileAccess.Read), ZipArchiveMode.Read))
+            using (var zip = FileUtil.OpenZip(zipPath))
             {
                 string prefix = Prefix(zip);
                 var entries = zip.Entries.Where(e => e.Name.Length > 0 && e.FullName.StartsWith(prefix)).ToList();
@@ -850,7 +857,7 @@ namespace Skate3Launcher
                 if (Directory.Exists(source)) CopyDir(source, tmp);
                 else
                 {
-                    using (var zip = new ZipArchive(new FileStream(source, FileMode.Open, FileAccess.Read), ZipArchiveMode.Read))
+                    using (var zip = FileUtil.OpenZip(source))
                         foreach (var e in zip.Entries)
                         {
                             if (e.Name.Length == 0) continue;

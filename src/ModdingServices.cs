@@ -912,6 +912,7 @@ namespace Skate3Launcher
                 foreach (var f in new DirectoryInfo(dir).GetFiles("*", SearchOption.TopDirectoryOnly))
                 {
                     if (IsIgnoredPackageFile(f.Name)) continue;
+                    if (GameFiles.Protected.Contains(f.Name.ToLowerInvariant())) continue;
                     string entryName = topFolder + "/" + f.Name;
                     entries[entryName] = f.FullName;
                 }

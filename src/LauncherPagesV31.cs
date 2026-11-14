@@ -151,6 +151,15 @@ namespace Skate3Launcher
 
         // ================================================================== What's new
 
+        static readonly string[] WhatsNew312 =
+        {
+            "Installing a Skate 3 Recomp update from the Game files page no longer fails because the download was deleted before the install finished reading it.",
+            "If the launcher hits an error it can't recover from, it saves the details to launcher-crash.log and tells you where, instead of closing without a word.",
+            "Restoring your original settings is refused while Skate 3 is running, so the game can't overwrite it when it exits.",
+            "Game file checks, driver checks and Discord status show an error on their card instead of crashing the launcher.",
+            "A broken or fake .zip is no longer kept locked until you close the launcher."
+        };
+
         static readonly string[] WhatsNew311 =
         {
             "Portable installs: if portable.txt or a saves folder sits next to skate3.exe, the launcher now edits the same settings.toml and backs up the same saves the game uses.",
@@ -178,15 +187,17 @@ namespace Skate3Launcher
             bool existingUser = File.Exists(Paths.Prefs) && seen != LauncherVersion;
             LauncherPrefs.Write("last_seen_version", LauncherVersion);
             if (!existingUser || (seen != null && Updates.Compare(LauncherVersion, seen) <= 0)) return;
-            ShowWhatsNew(seen == null || Updates.Compare("3.1.0", seen) > 0);
+            ShowWhatsNew(seen == null || Updates.Compare("3.1.1", seen) > 0,
+                         seen == null || Updates.Compare("3.1.0", seen) > 0);
         }
 
-        void ShowWhatsNew() { ShowWhatsNew(false); }
+        void ShowWhatsNew() { ShowWhatsNew(false, false); }
 
-        // includeV310: also list v3.1.0's changes, for people updating straight from v3.0.
-        void ShowWhatsNew(bool includeV310)
+        // includeV311 / includeV310: also list older releases' changes for people skipping versions.
+        void ShowWhatsNew(bool includeV311, bool includeV310)
         {
-            string text = "•  " + string.Join("\n\n•  ", WhatsNew311);
+            string text = "•  " + string.Join("\n\n•  ", WhatsNew312);
+            if (includeV311) text += "\n\nAlso new in v3.1.1:\n\n•  " + string.Join("\n\n•  ", WhatsNew311);
             if (includeV310) text += "\n\nAlso new since v3.0 (from v3.1.0):\n\n•  " + string.Join("\n\n•  ", WhatsNew310);
             DarkDialog.Ask(this, "What's new in v" + LauncherVersion, text, "Got it");
         }
@@ -242,7 +253,7 @@ namespace Skate3Launcher
             fromZip.Click += delegate
             {
                 using (var dlg = new OpenFileDialog { Title = "Choose a Skate 3 Recomp release zip", Filter = "Zip files|*.zip" })
-                    if (dlg.ShowDialog(this) == DialogResult.OK) InstallRecompZip(dlg.FileName, Path.GetFileNameWithoutExtension(dlg.FileName));
+                    if (dlg.ShowDialog(this) == DialogResult.OK) InstallRecompZip(dlg.FileName, Path.GetFileNameWithoutExtension(dlg.FileName), false);
             };
             notes.Click += delegate { OpenUrl(gfLatest != null && gfLatest.PageUrl != null ? gfLatest.PageUrl : "https://github.com/" + UpdateRepo + "/releases"); };
             gfCancel.Click += delegate { gfCancelRequested = true; };
@@ -305,8 +316,26 @@ namespace Skate3Launcher
             string exe = gameExe;
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
-                var r = GameFiles.Check(exe, false, null, delegate { return false; });
-                Ui(delegate { ApplyGameCheck(r); });
+                GameCheck r = null;
+                string err = null;
+                try
+                {
+                    r = GameFiles.Check(exe, false, null, delegate { return false; });
+                }
+                catch (Exception ex) { err = ex.Message; }
+                Ui(delegate
+                {
+                    if (err != null)
+                    {
+                        if (gfSetupCard != null)
+                        {
+                            gfSetupCard.HelpText.Text = "Couldn't finish the check: " + err;
+                            RelayoutCurrent();
+                        }
+                        return;
+                    }
+                    ApplyGameCheck(r);
+                });
             });
         }
 
@@ -382,17 +411,30 @@ namespace Skate3Launcher
             DateTime lastUi = DateTime.MinValue;
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
-                var r = GameFiles.Check(exe, full, (done, total, file) =>
+                GameCheck r = null;
+                string err = null;
+                try
                 {
-                    if ((DateTime.Now - lastUi).TotalMilliseconds < 200) return;
-                    lastUi = DateTime.Now;
-                    string t = (full ? "Hashing " : "Checking ") + (total > 0 ? (done * 100 / total) + "%" : "") + "  ·  " + file;
-                    Ui(delegate { gfVerifyText.Text = t; });
-                }, delegate { return gfVerifyCancelRequested; });
+                    r = GameFiles.Check(exe, full, (done, total, file) =>
+                    {
+                        if ((DateTime.Now - lastUi).TotalMilliseconds < 200) return;
+                        lastUi = DateTime.Now;
+                        string t = (full ? "Hashing " : "Checking ") + (total > 0 ? (done * 100 / total) + "%" : "") + "  ·  " + file;
+                        Ui(delegate { gfVerifyText.Text = t; });
+                    }, delegate { return gfVerifyCancelRequested; });
+                }
+                catch (Exception ex) { err = ex.Message; }
                 Ui(delegate
                 {
                     gfVerifyBusy = false;
                     gfVerifyCancel.Visible = false;
+                    if (err != null)
+                    {
+                        gfVerifyText.Text = "Couldn't finish the check: " + err;
+                        gfVerifyText.ForeColor = Theme.Warn;
+                        RelayoutCurrent();
+                        return;
+                    }
                     ApplyGameCheck(r);
                     ShowVerifyResult(r);
                 });
@@ -545,13 +587,12 @@ namespace Skate3Launcher
                     gfCancel.Visible = false;
                     gfBusy = false;
                     if (error != null) { gfProgressText.Text = error; gfProgressText.ForeColor = Theme.Warn; RefreshRecompVersionCard(); return; }
-                    InstallRecompZip(zip, rel.Tag);
-                    try { File.Delete(zip); } catch { }
+                    InstallRecompZip(zip, rel.Tag, true);
                 });
             });
         }
 
-        void InstallRecompZip(string zip, string tag)
+        void InstallRecompZip(string zip, string tag, bool deleteAfter)
         {
             if (GameRunningGuard("updating the recomp")) return;
             if (gameExe == null) { MessageBox.Show(this, "Set the game location on the Launcher page first.", AppName); return; }
@@ -568,6 +609,10 @@ namespace Skate3Launcher
                     if (tag != null && Regex.IsMatch(tag, @"\d")) RecompVersion.Remember(gameExe, tag);
                 }
                 catch (Exception ex) { error = ex.Message; }
+                finally
+                {
+                    if (deleteAfter) { try { File.Delete(zip); } catch { } }
+                }
                 Ui(delegate
                 {
                     gfBusy = false;
@@ -1328,12 +1373,26 @@ namespace Skate3Launcher
             string logs = Paths.LogsDir(gameExe);
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
-                var d = DriverCheck.Inspect(gpu, logs);
+                DriverInfo d = null;
                 string netError = null;
-                List<string> known = online ? DriverCheck.KnownIssues(d, out netError) : new List<string>();
+                List<string> known = null;
+                string err = null;
+                try
+                {
+                    d = DriverCheck.Inspect(gpu, logs);
+                    known = online ? DriverCheck.KnownIssues(d, out netError) : new List<string>();
+                }
+                catch (Exception ex) { err = ex.Message; }
                 Ui(delegate
                 {
                     driverChecking = false;
+                    if (err != null)
+                    {
+                        driverText.Text = "Couldn't check driver: " + err;
+                        driverText.ForeColor = Theme.Warn;
+                        RelayoutCurrent();
+                        return;
+                    }
                     var sb = new StringBuilder();
                     sb.Append(d.Gpu ?? "Unknown GPU");
                     if (d.Version != null) sb.Append("  ·  driver ").Append(d.Version);
@@ -1506,6 +1565,7 @@ namespace Skate3Launcher
                 cb.SelectedIndex = Math.Max(0, Math.Min(cb.Items.Count - 1, cb.SelectedIndex + (forward ? 1 : -1)));
                 return;
             }
+            if (currentPage == null) return;
             Control start = ActiveControl ?? currentPage.Page;
             if (start is ScrollPanel || start == null)
             {
