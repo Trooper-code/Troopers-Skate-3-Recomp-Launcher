@@ -985,7 +985,7 @@ namespace Skate3Launcher
     partial class MainForm : Form
     {
         public const string AppName = "Trooper's Skate 3 Recomp Launcher";
-        public const string LauncherVersion = "3.1.1";
+        public const string LauncherVersion = "3.1.2";
         readonly string userDir;
         readonly string configPath;
         string gameExe;
