@@ -151,6 +151,15 @@ namespace Skate3Launcher
 
         // ================================================================== What's new
 
+        static readonly string[] WhatsNew312 =
+        {
+            "Installing a Skate 3 Recomp update from the Game files page no longer fails because the download was deleted before the install finished reading it.",
+            "If the launcher hits an error it can't recover from, it saves the details to launcher-crash.log and tells you where, instead of closing without a word.",
+            "Restoring your original settings is refused while Skate 3 is running, so the game can't overwrite it when it exits.",
+            "Game file checks, driver checks and Discord status show an error on their card instead of crashing the launcher.",
+            "A broken or fake .zip is no longer kept locked until you close the launcher."
+        };
+
         static readonly string[] WhatsNew311 =
         {
             "Portable installs: if portable.txt or a saves folder sits next to skate3.exe, the launcher now edits the same settings.toml and backs up the same saves the game uses.",
@@ -178,15 +187,17 @@ namespace Skate3Launcher
             bool existingUser = File.Exists(Paths.Prefs) && seen != LauncherVersion;
             LauncherPrefs.Write("last_seen_version", LauncherVersion);
             if (!existingUser || (seen != null && Updates.Compare(LauncherVersion, seen) <= 0)) return;
-            ShowWhatsNew(seen == null || Updates.Compare("3.1.0", seen) > 0);
+            ShowWhatsNew(seen == null || Updates.Compare("3.1.1", seen) > 0,
+                         seen == null || Updates.Compare("3.1.0", seen) > 0);
         }
 
-        void ShowWhatsNew() { ShowWhatsNew(false); }
+        void ShowWhatsNew() { ShowWhatsNew(false, false); }
 
-        // includeV310: also list v3.1.0's changes, for people updating straight from v3.0.
-        void ShowWhatsNew(bool includeV310)
+        // includeV311 / includeV310: also list older releases' changes for people skipping versions.
+        void ShowWhatsNew(bool includeV311, bool includeV310)
         {
-            string text = "•  " + string.Join("\n\n•  ", WhatsNew311);
+            string text = "•  " + string.Join("\n\n•  ", WhatsNew312);
+            if (includeV311) text += "\n\nAlso new in v3.1.1:\n\n•  " + string.Join("\n\n•  ", WhatsNew311);
             if (includeV310) text += "\n\nAlso new since v3.0 (from v3.1.0):\n\n•  " + string.Join("\n\n•  ", WhatsNew310);
             DarkDialog.Ask(this, "What's new in v" + LauncherVersion, text, "Got it");
         }

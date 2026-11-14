@@ -2278,7 +2278,7 @@ namespace Skate3Launcher
                 try
                 {
                     d = new DiscordRpc();
-                    if (d.Connect(id)) { d.SetActivity("Skating in Skate 3", state, start, image); discord = d; }
+                    if (d.Connect(id) && d.SetActivity("Skating in Skate 3", state, start, image)) discord = d;
                     else d.Dispose();
                 }
                 catch
@@ -2459,7 +2459,7 @@ namespace Skate3Launcher
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(logPath));
-                string text = "Launcher v" + MainForm.LauncherVersion + " (" + DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss 'UTC'") + ")\r\n" +
+                string text = "Launcher v" + MainForm.LauncherVersion + " (" + DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss 'UTC'", System.Globalization.CultureInfo.InvariantCulture) + ")\r\n" +
                     (exObj != null ? exObj.ToString() : "(no exception details)") + "\r\n";
                 File.WriteAllText(logPath, text);
             }
