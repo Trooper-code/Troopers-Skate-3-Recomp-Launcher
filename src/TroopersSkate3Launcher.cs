@@ -2079,17 +2079,31 @@ namespace Skate3Launcher
 
         void RestoreBackup()
         {
+            if (GameRunningGuard("restoring settings")) return;
             string backup = configPath + ".launcher-backup";
             if (!File.Exists(backup))
             {
-                MessageBox.Show(this, "No backup yet. The launcher makes one (settings.toml.launcher-backup) the first time it saves.", AppName);
+                DarkDialog.Ask(this, "No backup yet",
+                    "The launcher makes a backup (settings.toml.launcher-backup) the first time it saves.",
+                    "OK");
                 return;
             }
-            if (MessageBox.Show(this, "Replace settings.toml with the copy saved before the launcher first changed it?", AppName,
-                    MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
-            Profiles.SnapshotHistory();
-            File.Copy(backup, configPath, true);
-            ReloadFromFile();
+            if (DarkDialog.Ask(this, "Restore original settings?",
+                    "Replace settings.toml with the copy saved before the launcher first changed it?",
+                    "Restore", "Cancel") != 0) return;
+            try
+            {
+                Profiles.SnapshotHistory();
+                File.Copy(backup, configPath, true);
+                ReloadFromFile();
+            }
+            catch (Exception ex)
+            {
+                DarkDialog.Ask(this, "Couldn't restore settings",
+                    "Failed to copy " + backup + " over settings.toml:\n\n" + ex.Message +
+                    "\n\nMake sure Skate 3 isn't running and the file isn't read-only or open in another program.",
+                    "OK");
+            }
         }
 
         void ResetAllToDefaults()
@@ -2260,13 +2274,17 @@ namespace Skate3Launcher
             DateTime start = gameStartUtc;
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
-                var d = new DiscordRpc();
+                DiscordRpc d = null;
                 try
                 {
+                    d = new DiscordRpc();
                     if (d.Connect(id)) { d.SetActivity("Skating in Skate 3", state, start, image); discord = d; }
                     else d.Dispose();
                 }
-                catch { d.Dispose(); }
+                catch
+                {
+                    if (d != null) try { d.Dispose(); } catch { }
+                }
             });
         }
 
@@ -2388,6 +2406,10 @@ namespace Skate3Launcher
         [STAThread]
         static int Main(string[] args)
         {
+            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+            Application.ThreadException += delegate(object sender, System.Threading.ThreadExceptionEventArgs e) { HandleCrash(e.Exception); };
+            AppDomain.CurrentDomain.UnhandledException += delegate(object sender, UnhandledExceptionEventArgs e) { HandleCrash(e.ExceptionObject); };
+
             try { Native.SetProcessDPIAware(); } catch { }
             using (var g = Graphics.FromHwnd(IntPtr.Zero)) Dpi.F = Math.Max(1f, g.DpiX / 96f);
             Application.EnableVisualStyles();
@@ -2407,6 +2429,27 @@ namespace Skate3Launcher
             if (play) return QuickPlay(profile);
             Application.Run(new MainForm(profile));
             return 0;
+        }
+
+        static void HandleCrash(object exObj)
+        {
+            string logPath = Path.Combine(Path.GetDirectoryName(Paths.Prefs), "launcher-crash.log");
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(logPath));
+                string text = "Launcher v" + MainForm.LauncherVersion + " (" + DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss 'UTC'") + ")\r\n" +
+                    (exObj != null ? exObj.ToString() : "(no exception details)") + "\r\n";
+                File.WriteAllText(logPath, text);
+            }
+            catch { }
+            try
+            {
+                MessageBox.Show(
+                    "Something went wrong and the launcher needs to close.\nDetails were saved to " + logPath + ". Please attach it to a bug report on GitHub.",
+                    MainForm.AppName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            catch { }
+            Environment.Exit(1);
         }
 
         // Headless launch used by "--play" shortcuts.

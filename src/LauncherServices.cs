@@ -508,7 +508,7 @@ namespace Skate3Launcher
 
         static ZipArchive ZipFile_Open(string path)
         {
-            return new ZipArchive(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read), ZipArchiveMode.Read);
+            return FileUtil.OpenZip(path);
         }
 
         public static List<FileInfo> DlcFiles()
@@ -683,16 +683,26 @@ namespace Skate3Launcher
         {
             for (int i = 0; i < 10 && pipe == null; i++)
             {
+                NamedPipeClientStream p = null;
                 try
                 {
-                    var p = new NamedPipeClientStream(".", "discord-ipc-" + i, PipeDirection.InOut, PipeOptions.None);
+                    p = new NamedPipeClientStream(".", "discord-ipc-" + i, PipeDirection.InOut, PipeOptions.None);
                     p.Connect(400);
                     pipe = p;
+                    p = null;
                 }
-                catch { }
+                catch
+                {
+                    if (p != null) { try { p.Dispose(); } catch { } }
+                }
             }
             if (pipe == null) return false;
-            Send(0, "{\"v\":1,\"client_id\":\"" + Json.Esc(appId) + "\"}");
+            try
+            {
+                Send(0, "{\"v\":1,\"client_id\":\"" + Json.Esc(appId) + "\"}");
+            }
+            catch (IOException) { Dispose(); return false; }
+            catch (ObjectDisposedException) { Dispose(); return false; }
             string reply = Read();
             if (reply == null || reply.Contains("\"evt\":\"ERROR\"") || !reply.Contains("READY")) { Dispose(); return false; }
             var m = Regex.Match(reply, "\"(?:global_name|username)\"\\s*:\\s*\"([^\"]*)\"");
@@ -700,9 +710,9 @@ namespace Skate3Launcher
             return true;
         }
 
-        public void SetActivity(string details, string state, DateTime startUtc, string largeImage)
+        public bool SetActivity(string details, string state, DateTime startUtc, string largeImage)
         {
-            if (pipe == null) return;
+            if (pipe == null) return false;
             long start = (long)(startUtc - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalSeconds;
             var sb = new StringBuilder();
             sb.Append("{\"cmd\":\"SET_ACTIVITY\",\"nonce\":\"").Append(Guid.NewGuid().ToString()).Append("\",\"args\":{\"pid\":")
@@ -711,8 +721,14 @@ namespace Skate3Launcher
             if (!string.IsNullOrEmpty(largeImage))
                 sb.Append(",\"assets\":{\"large_image\":\"").Append(Json.Esc(largeImage)).Append("\",\"large_text\":\"Skate 3 Recomp\"}");
             sb.Append("}}}");
-            Send(1, sb.ToString());
-            Read();
+            try
+            {
+                Send(1, sb.ToString());
+                Read();
+            }
+            catch (IOException) { Dispose(); return false; }
+            catch (ObjectDisposedException) { Dispose(); return false; }
+            return true;
         }
 
         public void Clear()
