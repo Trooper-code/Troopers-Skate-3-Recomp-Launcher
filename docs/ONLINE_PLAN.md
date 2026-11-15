@@ -5,6 +5,12 @@ Each milestone is sized for its own feature branch and PR. **Do not start launch
 ---
 
 ## Milestone 1: Recomp Networking & Host Redirect (Upstream PR to `skate3recomp` / `rexglue-skate3`)
+
+> **Update 2026-11-14: steps 1 and 2 already exist in the 5C8 build** ([`5C8/rexglue-skate3`](https://github.com/5C8/rexglue-skate3) `e948aee`): real name lookups, the `net_host_overrides` setting (`src/kernel/xam/xam_net.cpp` L60–66, L977–1050) and real addresses (L849–857). 5C8 also forces the plain connection on `:42100` (`skate3recomp` `src/skate3_online.cpp` L4–45).
+>
+> **Fastest path:** do step 3 now with the 5C8 build and a local `Skateboard3Server`. Set `net_host_overrides` to point the redirector and downloads hostnames at the server, for example `gosredirector.ea.com=127.0.0.1; gosredirector.stest.ea.com=127.0.0.1; downloads.skate.online.ea.com=127.0.0.1` (the hostnames listed in Skateboard3Server's `DEVELOPMENT.md`). The server's hex log then shows the Xbox 360 login packet.
+>
+> **The upstream PR becomes porting 5C8's changes** to `mchughalex/rexglue-skate3`, with 5C8's agreement, rather than writing them from scratch.
 - **Repos touched:** `mchughalex/rexglue-skate3` (`skate3-sdk-clean`), `mchughalex/skate3recomp`
 - **Scope:**
   1. Implement `NetDll_XNetDnsLookup_entry` (`src/kernel/xam/xam_net.cpp`) using real host DNS (`getaddrinfo`), with a configurable host-override map (e.g. `net_host_overrides` cvar in `skate3.toml` / `settings.toml` mapping `gosredirector.ea.com` and `downloads.skate.online.ea.com` to a target IP).

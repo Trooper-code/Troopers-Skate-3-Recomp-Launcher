@@ -8,6 +8,8 @@
 - **Blocker 3 (Server Xbox 360 auth & Web routes):** `Skateboard3Server` only accepts PS3 NP/RPCN tickets (`LoginHandler.cs`) and serves WebKit pages under `/skate3/webkit/PS3/...`. It has no Xbox 360 login path yet, and `SammyTeee/Skateboard3Server` has **zero changes** compared to `hallofmeat/Skateboard3Server`.
 - **Blocker 4 (ProtoSSL on `:42100` — UNVERIFIED on 360):** On PS3, `Skateboard3Server` serves `:42100` over plain TCP while `BlazeTlsServer` (SSLv3 + RC4) sits unused in `Program.cs`. Whether the Xbox 360 TU3 binary enforces ProtoSSL cert checks on `:42100` is **UNVERIFIED** until tested with XNet DNS enabled.
 
+> **5C8 build (checked 2026-11-14):** blockers 1, 2 and 4 above describe the official recomp. 5C8's fork ([`5C8/rexglue-skate3`](https://github.com/5C8/rexglue-skate3) `e948aee`, [`5C8/skate3recomp`](https://github.com/5C8/skate3recomp) `4034fe7`) already does real name lookups with a server-override setting, reports real addresses, turns Live sign-in on per profile and forces the plain (non-SSL) connection. Blocker 3 is server-side and still applies. See the **5C8 build** column in [section E](#e-blockers-summary-table).
+
 ---
 
 ## Plain-English Glossary
@@ -65,6 +67,7 @@
 
 ### 2. Original (`hallofmeat/Skateboard3Server`) vs. Fork (`SammyTeee/Skateboard3Server`)
 
+- **Licence:** MIT (`LICENSE`, "Copyright (c) 2025 Hall of Meat"), the same as the launcher, so its code can be reused with credit.
 - **Result:** `SammyTeee/Skateboard3Server` (`master`, commit `0e7858b0f7d3e1dde37e608a6d89e36ce1dc44c8`, "Update LICENSE") is an **exact, unmodified mirror** of `hallofmeat/Skateboard3Server` (`master`, `0e7858b0f7d3e1dde37e608a6d89e36ce1dc44c8`).
 - `git diff --stat upstream/master HEAD` shows **0 files changed**, and `git ls-remote` confirms `SammyTeee/Skateboard3Server` has only the `master` branch. Any Xbox 360 work will need to be built from scratch on top of `Skateboard3Server` (or contributed upstream).
 
@@ -207,13 +210,15 @@ sequenceDiagram
 
 ## E. Blockers Summary Table
 
-| Blocker | Lives in | Effort | Proposed Fix |
-|---|---|---|---|
-| `NetDll_XNetDnsLookup` is stubbed (always errors) | Recomp (`rexglue-sdk`) | **S** | Implement `getaddrinfo` DNS lookup + host-override map cvar (`online_host_overrides`). |
-| `XNetGetTitleXnAddr` returns `127.0.0.1`; `XNetXnAddrToInAddr` / `InAddrToXnAddr` stubbed | Recomp (`rexglue-sdk`) | **M** | Return real local/LAN IP in `XNetGetTitleXnAddr` and map `XNADDR` <-> `IN_ADDR` for P2P. |
-| `user_live_signed_in` defaults to `false` | Recomp + Launcher | **S** | Launcher sets `user_live_signed_in = true` in `settings.toml` when online mode is enabled. |
-| No Xbox 360 login handler in Blaze server | Server (`Skateboard3Server`) | **M** | Capture 360 login packet via `BlazeProtocol` hex log; add Xbox login handler (`ExternalIdType.Xbox`). |
-| ProtoSSL on `:42100` (if enforced by 360 TU3) | Server or Recomp | **M** | Either enable `BlazeSslServerMiddleware` on `:42100` or hook/bypass cert check in `skate3recomp`. |
-| WebKit routes hardcoded to `/skate3/webkit/PS3/...` | Server (`Skateboard3Server`) | **S** | Add `/skate3/webkit/XBL2/...` route aliases (verify exact path from 404 logs). |
-| `XNNC` / `XSES` session blobs & `XNetQos*` for P2P | Server + Recomp | **L** | Test if 360 Skate 3 accepts `null`/dummy `XNNC`/`XSES` or needs `XNetQos*` + `XSession*` wiring. |
-| Server picker, `settings.toml` sync, optional local server runner | Launcher | **M** | Add "Online" tool card in launcher (`launcher.ini` + `settings.toml` + optional server download). |
+| Blocker | Lives in | Effort | Proposed Fix | 5C8 build |
+|---|---|---|---|---|
+| `NetDll_XNetDnsLookup` is stubbed (always errors) | Recomp (`rexglue-sdk`) | **S** | Implement `getaddrinfo` DNS lookup + host-override map cvar (`online_host_overrides`). | **Done.** Real lookup on a background thread, plus a `net_host_overrides` setting: `host=target` pairs separated by commas or semicolons, target an IPv4 address or hostname, case-insensitive (`src/kernel/xam/xam_net.cpp` L60–66, L977–1050). Use this name rather than a new `online_host_overrides`. |
+| `XNetGetTitleXnAddr` returns `127.0.0.1`; `XNetXnAddrToInAddr` / `InAddrToXnAddr` stubbed | Recomp (`rexglue-sdk`) | **M** | Return real local/LAN IP in `XNetGetTitleXnAddr` and map `XNADDR` <-> `IN_ADDR` for P2P. | **Done.** Returns the PC's real IPv4 with port 3074 (`xam_net.cpp` L849–857); both conversions work (L901–918). |
+| `user_live_signed_in` defaults to `false` | Recomp + Launcher | **S** | Launcher sets `user_live_signed_in = true` in `settings.toml` when online mode is enabled. | **Different.** Defaults to `true` (`src/system/xam/user_profile.cpp` L32), but 5C8 sets it from each profile in `profiles\profiles.toml` (`skate3recomp` `src/skate3_user_settings.cpp` L187–193), so a value written to `settings.toml` is overridden. The launcher should change the profile instead. |
+| No Xbox 360 login handler in Blaze server | Server (`Skateboard3Server`) | **M** | Capture 360 login packet via `BlazeProtocol` hex log; add Xbox login handler (`ExternalIdType.Xbox`). | **Not covered** (server-side). 5C8's community server, `comebacktonewsanvan.com`, is built for this recomp, but its code isn't published in any repo we've found. |
+| ProtoSSL on `:42100` (if enforced by 360 TU3) | Server or Recomp | **M** | Either enable `BlazeSslServerMiddleware` on `:42100` or hook/bypass cert check in `skate3recomp`. | **Sidestepped.** A recomp hook forces the game onto the plain connection (`skate3recomp` `src/skate3_online.cpp` L4–45), so the server can stay plain TCP. |
+| WebKit routes hardcoded to `/skate3/webkit/PS3/...` | Server (`Skateboard3Server`) | **S** | Add `/skate3/webkit/XBL2/...` route aliases (verify exact path from 404 logs). | **Not covered** (server-side). |
+| `XNNC` / `XSES` session blobs & `XNetQos*` for P2P | Server + Recomp | **L** | Test if 360 Skate 3 accepts `null`/dummy `XNNC`/`XSES` or needs `XNetQos*` + `XSession*` wiring. | **Partly.** QoS lookups fail cleanly so the game skips them (`xam_net.cpp` L973–975, L1090–1100); `XNetConnect` succeeds and `XNetGetConnectStatus` reports connected (L959–966); `XNetQosListen` still fails (L1114). `XSession*` not checked. |
+| Server picker, `settings.toml` sync, optional local server runner | Launcher | **M** | Add "Online" tool card in launcher (`launcher.ini` + `settings.toml` + optional server download). | **Smaller.** The launcher only needs to write `net_host_overrides` and the profile's Live sign-in. |
+
+*5C8 column checked 2026-11-14 against `5C8/rexglue-skate3` commit `e948aee` and `5C8/skate3recomp` commit `4034fe7`. Line numbers refer to those commits. The other columns describe the official recomp (`mchughalex/rexglue-skate3` `skate3-sdk-clean`, commit `7eb0faf`), which still has every stub listed.*
