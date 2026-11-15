@@ -20,6 +20,7 @@ Each milestone is sized for its own feature branch and PR. **Do not start launch
      - Exact `Authentication` command ID and TDF fields sent by the Xbox 360 TU3 binary.
      - Exact HTTP paths requested on `:80`.
 - **Upstream PR:** Send `XNetDnsLookup` + `net_host_overrides` cvar to `mchughalex/rexglue-skate3` and `mchughalex/skate3recomp`.
+- **Patch & Delivery Analysis:** See [ONLINE_PATCH_OPTIONS.md](ONLINE_PATCH_OPTIONS.md) for the exact 5C8 diff, delivery options A–F, and licensing findings.
 - **Acceptance checks:**
   - `skate3.exe` resolves `gosredirector.ea.com` without admin rights or `hosts` file edits.
   - `Skateboard3Server` logs an incoming TCP connection on `:42100` from `skate3.exe`.
