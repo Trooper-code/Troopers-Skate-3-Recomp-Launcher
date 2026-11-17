@@ -1,0 +1,31 @@
+# Coordinator workflow checks (from Trooper-s-Coordinator-Skills).
+# Runs the coordinator workflow's checks on every push and pull request:
+#   - nothing copyrighted or oversized is committed (blocks the push)
+#   - HANDOFF.md is within budget and its paths exist (blocks the push)
+#   - research facts proven on older tool versions, and the research index (report only)
+name: Checks
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Find the scripts folder (scripts/ or docs/scripts/)
+        run: |
+          if [ -d scripts ] && [ -f scripts/check-safe-to-publish.py ]; then echo "S=scripts" >> "$GITHUB_ENV"
+          elif [ -f docs/scripts/check-safe-to-publish.py ]; then echo "S=docs/scripts" >> "$GITHUB_ENV"
+          else echo "Can't find the check scripts in scripts/ or docs/scripts/." && exit 1; fi
+      - name: Safe to publish
+        run: python "$S/check-safe-to-publish.py"
+      - name: Handoff
+        run: |
+          if [ -f docs/HANDOFF.md ]; then python "$S/check-handoff.py"; else echo "No docs/HANDOFF.md yet."; fi
+      - name: Research (report only)
+        run: python "$S/check-research.py" --warn-only

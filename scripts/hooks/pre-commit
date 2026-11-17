@@ -1,0 +1,20 @@
+#!/bin/sh
+# Blocks commits that would add game files, ROMs, saves or big binaries to a public repo.
+#
+# Keep a copy in the repo next to the check scripts (scripts/hooks/pre-commit, or docs/scripts/hooks/pre-commit),
+# then install it once from the repo root:
+#   cp scripts/hooks/pre-commit .git/hooks/pre-commit          (scripts at the repo root)
+#   cp docs/scripts/hooks/pre-commit .git/hooks/pre-commit     (scripts under docs/)
+# Git for Windows runs this with its own sh, so it works from PowerShell, cmd and GUI clients too.
+# It needs Python on your PATH. To skip it once on purpose: git commit --no-verify
+
+if command -v python3 >/dev/null 2>&1; then PY=python3; else PY=python; fi
+# The check scripts live in scripts/ or docs/scripts/; use whichever this repo has.
+if [ -f scripts/check-safe-to-publish.py ]; then S=scripts
+elif [ -f docs/scripts/check-safe-to-publish.py ]; then S=docs/scripts
+else
+  echo "Copyright guard: can't find check-safe-to-publish.py in scripts/ or docs/scripts/. Copy it there from the"
+  echo "coordinator-skills templates, or remove .git/hooks/pre-commit to turn this check off."
+  exit 1
+fi
+exec "$PY" "$S/check-safe-to-publish.py" --staged
