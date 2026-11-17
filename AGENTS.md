@@ -119,9 +119,34 @@ New code: put services (no UI) in `GameServices.cs` or a new `src/<Name>Services
 
 ## Things to know before you start
 
-- **Mods folder:** every folder in `mods\` (except names starting with `.` or `_`) is treated as a mod. The Skate 3 Recompiled+ fork keeps its New San Van data in `mods\skate2\`, so the loader must treat that folder as reserved. **As of v3.1.1 it doesn't yet** (planned fix for v3.1.2): don't build anything that enables, changes or deletes `mods\skate2`.
+- **Mods folder:** every folder in `mods\` (except names starting with `.` or `_`) is treated as a mod. The Skate 3 Recompiled+ fork keeps its New San Van data in `mods\skate2\`, so the loader must treat that folder as reserved. Since v3.1.2 the loader skips it (folder scan in `src/GameServices.cs`, around line 787, and the name check around line 850). Still: don't build anything that enables, changes or deletes `mods\skate2`.
 - **Protected game files:** mods can never replace `default.xex`, `default.xexp` or the EAWebkit `.xex/.xexp` files (`GameFiles.Protected`).
 - **Benchmark:** temporarily writes demo-path settings into `settings.toml` and **must** restore it (`Benchmarks.RestoreConfig`), including after a crash (`RecoverConfig` on startup).
 - **Game data root:** a modded launch passes `--game_data_root "<mods\.active-game>"`; a normal launch scrubs any leftover `game_data_root` from `settings.toml` (`Mods.ScrubConfig`).
 - **Archives:** the game's `.big` files are EA `EB3` archives (header `EB\0\3`), not classic BIG. The layout, verified against every retail archive, is in [`research.md`](research.md), along with in-game test results: read it before writing archive code. Format notes also exist in the Skate 3 Recompiled+ fork (`tools/world_archive.py`), which has **no license**: read it for format facts, write our own C#, don't copy its code.
 - **Licensing:** this repo is MIT. Never add code from repositories without a compatible license, and never add game files, EA artwork (including the Skate 3 icon) or recomp binaries.
+
+## Coordinator workflow (Claude reviews, Antigravity builds)
+
+Since 2026-11-17 this project uses a coordinator workflow. Claude writes your task in `docs/prompts/<MILESTONE>-<slug>.md`, reviews your branch, and merges and tags it after Josh has tested it. These rules add to the ones above.
+
+- **Never merge, rebase onto main, push to main, or create tags.** Push your branch (and open a PR if you like); leave it for review.
+- **Look things up in `docs/research/INDEX.md` first**, and add a line there for every new research topic or section.
+- **Label every finding** in `research.md` (or a file under `docs/research/`): **confirmed** (proven by a real run, test or capture), **unverified** (read from code or docs only) or **wrong** (an old claim that turned out false: fix it where it was written). Stamp confirmed findings: `[confirmed @ <your branch> | <tool>=<version>, …]`, using the tool names in the "Tool versions" table of `docs/HANDOFF.md`.
+- **Don't reopen a settled choice.** Check `docs/DECISIONS.md`; if new facts change an answer, say so in your report instead of changing course.
+- **Tool versions:** record the ones you used at the top of your report; say if any differ from `docs/HANDOFF.md`.
+- **Never** touch Josh's real game folder, saves or `settings.toml` except read-only, unless your prompt says so. Work on copies.
+
+**Stop and report** (a clear "here's what I know and where I'm stuck" beats more attempts) when: the same approach has failed **3 times**; you need a file, tool, permission or fact you don't have; what you find **contradicts a confirmed fact**; the task turns out much bigger than the prompt expected; or the prompt's own stop conditions are met.
+
+**Your report:** write `docs/reports/<MILESTONE>-<slug>.md` from `docs/reports/TEMPLATE.md`, check it with `python scripts/check-report.py <file>`, commit it on your branch, and reply with its path and a 3-line summary. It must stand on its own: Claude reads it from the branch.
+
+## Agent-specific constraints: Antigravity
+
+Status as of 2026-11: rules loading is confirmed against Antigravity's docs; the rest is unverified.
+
+- **Rules loading:** Antigravity reads this `AGENTS.md` automatically (confirmed). There's no `GEMINI.md`; don't add one. Reported (unverified): a 12,000-character limit per rule file, and this file is longer, so every prompt lists `AGENTS.md` under "Read first": read the whole file.
+- **superpowers skills:** `systematic-debugging` before any fix, `test-driven-development` for new code (the throwaway harnesses this project uses count), `verification-before-completion` before reporting done.
+- **REA (Reverse Engineer Anything):** only when a prompt asks for binary or decompile work. Read-only on game files and the recomp install; never attach its debuggers or process tools to a running game. Its output is unverified until proven by a test or a real run.
+- **`/swarm`:** only when a prompt says the task splits into independent parts and spells out each worker's part. Never for one linear trace or a small fix: it uses quota much faster.
+- **Quirk:** long runs drift from the prompt. Re-read your prompt's Goal and "Stop and report if" before writing the report.
